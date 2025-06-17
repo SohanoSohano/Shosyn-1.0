@@ -1,6 +1,12 @@
-venv
-best_fire_tv_neural_cde.pth
-best_fire_tv_neural_cde_fixed.pth
-best_fire_tv_neural_cde_enhanced.pth
-wandb
+# Virtual environment
+venv/
+
+# Model files
+*.pth
+
+# Weights & Biases logs
+wandb/
+
+# Just in case specific files are not caught by wildcard:
 fire_tv_neural_cde_transformer/models/final_hybrid_model_cuda.pth
+fire_tv_neural_cde_transformer/models/best_hybrid_model.pth
