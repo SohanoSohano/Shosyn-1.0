@@ -1,0 +1,36 @@
+# test_neural_cde.py
+import torch
+import pandas as pd
+import numpy as np
+
+def quick_test():
+    print("🧪 Quick Neural CDE Test")
+    
+    # Test 1: Check CSV file
+    try:
+        df = pd.read_csv('fire_tv_neural_cde_dataset_1000.csv')
+        print(f"✅ CSV loaded: {df.shape}")
+    except Exception as e:
+        print(f"❌ CSV error: {e}")
+        return
+    
+    # Test 2: Check PyTorch
+    try:
+        x = torch.randn(2, 3)
+        print(f"✅ PyTorch working: {x.shape}")
+    except Exception as e:
+        print(f"❌ PyTorch error: {e}")
+        return
+    
+    # Test 3: Check torchcde
+    try:
+        import torchcde
+        print("✅ torchcde imported successfully")
+    except Exception as e:
+        print(f"❌ torchcde error: {e}")
+        return
+    
+    print("🎯 All basic tests passed!")
+
+if __name__ == "__main__":
+    quick_test()

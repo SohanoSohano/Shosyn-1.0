@@ -1,0 +1,44 @@
+FIRE TV NEURAL CDE DATASET ANALYSIS
+==================================================
+Generated: 2025-06-15 23:27:40
+Total entries: 1,000
+
+BASIC STATISTICS
+------------------------------
+Unique users: 50
+Unique sessions: 100
+Platform distribution:
+  netflix: 190 (19.0%)
+  hotstar: 178 (17.8%)
+  prime_video: 146 (14.6%)
+  youtube: 136 (13.6%)
+  hulu: 134 (13.4%)
+  apple_tv: 117 (11.7%)
+  disney_plus: 99 (9.9%)
+
+DEVICE DISTRIBUTION
+------------------------------
+fire_tv_stick_4k: 340 (34.0%)
+fire_tv_smart_tv: 320 (32.0%)
+fire_tv_stick_lite: 240 (24.0%)
+fire_tv_cube: 100 (10.0%)
+
+INTERACTION PATTERNS
+------------------------------
+Average navigation speed: 34.5 actions/min
+Average decision latency: 3911ms
+External app launch rate: 0.0%
+Average session engagement: 0.595
+
+BEHAVIORAL INSIGHTS
+------------------------------
+Average decision confidence: 0.429
+Average platform switching rate: 0.483
+Average frustration level: 0.093
+Content exploration breadth: 0.564
+
+TECHNICAL METRICS
+------------------------------
+Average CPU usage: 25.1%
+Average network latency: 62ms
+Average memory usage: 694MB
