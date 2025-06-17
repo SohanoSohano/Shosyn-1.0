@@ -1,0 +1,879 @@
+{
+  "test_timestamp": "2025-06-17T18:14:34.291806",
+  "model_info": {
+    "model_path": "best_fire_tv_neural_cde_fixed.pth",
+    "input_dim": 49,
+    "total_parameters": 2008596,
+    "trait_count": 20
+  },
+  "architecture_tests": {
+    "vector_field": {
+      "status": "PASS",
+      "details": "Output shape: torch.Size([1, 6272]), Range: [-1.316, 1.674]"
+    },
+    "initial_encoder": {
+      "status": "PASS",
+      "details": "Output shape: torch.Size([1, 128]), Range: [-2.242, 2.346]"
+    },
+    "attention": {
+      "status": "PASS",
+      "details": "Output shape: torch.Size([1, 1, 128]), Range: [-0.820, 1.067]"
+    },
+    "trait_decoders": {
+      "status": "PASS",
+      "details": "All 20 trait decoders working, sample outputs: {'cognitive_load': 0.6109206080436707, 'decision_confidence': 0.5818103551864624, 'frustration_level': 0.5803340673446655}"
+    }
+  },
+  "forward_pass_test": {
+    "status": "PASS",
+    "predictions": {
+      "cognitive_load": 0.430259108543396,
+      "decision_confidence": 0.6531022787094116,
+      "frustration_level": 0.31500452756881714,
+      "exploration_tendency": 0.5367147326469421,
+      "attention_span": 0.7023041844367981,
+      "navigation_efficiency": 0.6044896245002747,
+      "platform_loyalty": 0.4775947630405426,
+      "social_influence": 0.39871686697006226,
+      "price_sensitivity": 0.4234321415424347,
+      "content_diversity": 0.5439515113830566,
+      "session_engagement": 0.5762996673583984,
+      "ui_adaptation": 0.5131677985191345,
+      "temporal_consistency": 0.4784432053565979,
+      "multi_platform_behavior": 0.4129354953765869,
+      "voice_usage": 0.21922986209392548,
+      "recommendation_acceptance": 0.6259225010871887,
+      "search_sophistication": 0.4844449460506439,
+      "device_preference": 0.5389509797096252,
+      "peak_alignment": 0.4775449335575104,
+      "return_likelihood": 0.6605397462844849
+    },
+    "validation": {
+      "cognitive_load": {
+        "value": 0.430259108543396,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "decision_confidence": {
+        "value": 0.6531022787094116,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "frustration_level": {
+        "value": 0.31500452756881714,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "exploration_tendency": {
+        "value": 0.5367147326469421,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "attention_span": {
+        "value": 0.7023041844367981,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "navigation_efficiency": {
+        "value": 0.6044896245002747,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "platform_loyalty": {
+        "value": 0.4775947630405426,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "social_influence": {
+        "value": 0.39871686697006226,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "price_sensitivity": {
+        "value": 0.4234321415424347,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "content_diversity": {
+        "value": 0.5439515113830566,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "session_engagement": {
+        "value": 0.5762996673583984,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "ui_adaptation": {
+        "value": 0.5131677985191345,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "temporal_consistency": {
+        "value": 0.4784432053565979,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "multi_platform_behavior": {
+        "value": 0.4129354953765869,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "voice_usage": {
+        "value": 0.21922986209392548,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "recommendation_acceptance": {
+        "value": 0.6259225010871887,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "search_sophistication": {
+        "value": 0.4844449460506439,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "device_preference": {
+        "value": 0.5389509797096252,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "peak_alignment": {
+        "value": 0.4775449335575104,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "return_likelihood": {
+        "value": 0.6605397462844849,
+        "in_range": true,
+        "is_finite": true,
+        "realistic": true
+      },
+      "overall_valid": true
+    }
+  },
+  "multiple_sequence_tests": [
+    {
+      "test_id": 1,
+      "sequence_length": 23,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.4290001094341278,
+        "decision_confidence": 0.6503903269767761,
+        "frustration_level": 0.3166730999946594,
+        "exploration_tendency": 0.5379542708396912,
+        "attention_span": 0.7029249668121338,
+        "navigation_efficiency": 0.6040111780166626,
+        "platform_loyalty": 0.47638368606567383,
+        "social_influence": 0.3973012864589691,
+        "price_sensitivity": 0.42439496517181396,
+        "content_diversity": 0.5450278520584106,
+        "session_engagement": 0.5766445994377136,
+        "ui_adaptation": 0.5126497745513916,
+        "temporal_consistency": 0.4799031913280487,
+        "multi_platform_behavior": 0.4145861268043518,
+        "voice_usage": 0.22436819970607758,
+        "recommendation_acceptance": 0.6253945231437683,
+        "search_sophistication": 0.4847334027290344,
+        "device_preference": 0.5383493304252625,
+        "peak_alignment": 0.4762430489063263,
+        "return_likelihood": 0.6590366959571838
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 2,
+      "sequence_length": 16,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43053576350212097,
+        "decision_confidence": 0.6543401479721069,
+        "frustration_level": 0.31538811326026917,
+        "exploration_tendency": 0.5363778471946716,
+        "attention_span": 0.7018035054206848,
+        "navigation_efficiency": 0.6044540405273438,
+        "platform_loyalty": 0.47712796926498413,
+        "social_influence": 0.39820337295532227,
+        "price_sensitivity": 0.4241969883441925,
+        "content_diversity": 0.5439991354942322,
+        "session_engagement": 0.5762578845024109,
+        "ui_adaptation": 0.5136881470680237,
+        "temporal_consistency": 0.47876235842704773,
+        "multi_platform_behavior": 0.4125876724720001,
+        "voice_usage": 0.21839764714241028,
+        "recommendation_acceptance": 0.6263612508773804,
+        "search_sophistication": 0.4839445650577545,
+        "device_preference": 0.5404945015907288,
+        "peak_alignment": 0.4773075580596924,
+        "return_likelihood": 0.6602500081062317
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 3,
+      "sequence_length": 18,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.4306165277957916,
+        "decision_confidence": 0.6543630957603455,
+        "frustration_level": 0.31508225202560425,
+        "exploration_tendency": 0.5364254713058472,
+        "attention_span": 0.7017515897750854,
+        "navigation_efficiency": 0.6042066216468811,
+        "platform_loyalty": 0.4773816764354706,
+        "social_influence": 0.3984130024909973,
+        "price_sensitivity": 0.42392227053642273,
+        "content_diversity": 0.5437820553779602,
+        "session_engagement": 0.5762434005737305,
+        "ui_adaptation": 0.5136166214942932,
+        "temporal_consistency": 0.4785125255584717,
+        "multi_platform_behavior": 0.4124034643173218,
+        "voice_usage": 0.2180306762456894,
+        "recommendation_acceptance": 0.6263284087181091,
+        "search_sophistication": 0.48396098613739014,
+        "device_preference": 0.5402951836585999,
+        "peak_alignment": 0.47749418020248413,
+        "return_likelihood": 0.6606079339981079
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 4,
+      "sequence_length": 17,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43026578426361084,
+        "decision_confidence": 0.653678834438324,
+        "frustration_level": 0.3154124915599823,
+        "exploration_tendency": 0.5365582704544067,
+        "attention_span": 0.7021421194076538,
+        "navigation_efficiency": 0.6045571565628052,
+        "platform_loyalty": 0.4771631360054016,
+        "social_influence": 0.39830705523490906,
+        "price_sensitivity": 0.42389658093452454,
+        "content_diversity": 0.5440746545791626,
+        "session_engagement": 0.5763179659843445,
+        "ui_adaptation": 0.5134594440460205,
+        "temporal_consistency": 0.4787388741970062,
+        "multi_platform_behavior": 0.4129111170768738,
+        "voice_usage": 0.21917177736759186,
+        "recommendation_acceptance": 0.6261444687843323,
+        "search_sophistication": 0.48421552777290344,
+        "device_preference": 0.5397377014160156,
+        "peak_alignment": 0.47729867696762085,
+        "return_likelihood": 0.6602880954742432
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 5,
+      "sequence_length": 15,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43023785948753357,
+        "decision_confidence": 0.6533910632133484,
+        "frustration_level": 0.31518009305000305,
+        "exploration_tendency": 0.5366893410682678,
+        "attention_span": 0.7021896839141846,
+        "navigation_efficiency": 0.6043247580528259,
+        "platform_loyalty": 0.47736623883247375,
+        "social_influence": 0.3984808325767517,
+        "price_sensitivity": 0.42364299297332764,
+        "content_diversity": 0.5439916253089905,
+        "session_engagement": 0.5763254165649414,
+        "ui_adaptation": 0.5133034586906433,
+        "temporal_consistency": 0.47857314348220825,
+        "multi_platform_behavior": 0.4128838777542114,
+        "voice_usage": 0.21919241547584534,
+        "recommendation_acceptance": 0.626020073890686,
+        "search_sophistication": 0.4843025207519531,
+        "device_preference": 0.5393560528755188,
+        "peak_alignment": 0.47743090987205505,
+        "return_likelihood": 0.6604524850845337
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 6,
+      "sequence_length": 17,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.4301650822162628,
+        "decision_confidence": 0.6534458994865417,
+        "frustration_level": 0.315186470746994,
+        "exploration_tendency": 0.53659588098526,
+        "attention_span": 0.7023595571517944,
+        "navigation_efficiency": 0.6044544577598572,
+        "platform_loyalty": 0.477326363325119,
+        "social_influence": 0.3985081613063812,
+        "price_sensitivity": 0.42360809445381165,
+        "content_diversity": 0.5439186096191406,
+        "session_engagement": 0.5763367414474487,
+        "ui_adaptation": 0.5132989287376404,
+        "temporal_consistency": 0.47851553559303284,
+        "multi_platform_behavior": 0.41303473711013794,
+        "voice_usage": 0.21924349665641785,
+        "recommendation_acceptance": 0.6260271072387695,
+        "search_sophistication": 0.4843078851699829,
+        "device_preference": 0.5392298698425293,
+        "peak_alignment": 0.4774393141269684,
+        "return_likelihood": 0.6605586409568787
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 7,
+      "sequence_length": 25,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43020522594451904,
+        "decision_confidence": 0.6544206142425537,
+        "frustration_level": 0.316351979970932,
+        "exploration_tendency": 0.5363864898681641,
+        "attention_span": 0.701867401599884,
+        "navigation_efficiency": 0.6048213243484497,
+        "platform_loyalty": 0.4763337969779968,
+        "social_influence": 0.3974737823009491,
+        "price_sensitivity": 0.425076961517334,
+        "content_diversity": 0.5445557236671448,
+        "session_engagement": 0.5763656497001648,
+        "ui_adaptation": 0.5139564871788025,
+        "temporal_consistency": 0.4795075058937073,
+        "multi_platform_behavior": 0.41308194398880005,
+        "voice_usage": 0.21965391933918,
+        "recommendation_acceptance": 0.6265188455581665,
+        "search_sophistication": 0.4838376045227051,
+        "device_preference": 0.5412352681159973,
+        "peak_alignment": 0.4766295254230499,
+        "return_likelihood": 0.6595600843429565
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 8,
+      "sequence_length": 23,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43051671981811523,
+        "decision_confidence": 0.6542167663574219,
+        "frustration_level": 0.3151712417602539,
+        "exploration_tendency": 0.5364610552787781,
+        "attention_span": 0.7018408179283142,
+        "navigation_efficiency": 0.6042530536651611,
+        "platform_loyalty": 0.47729215025901794,
+        "social_influence": 0.39833858609199524,
+        "price_sensitivity": 0.4239470362663269,
+        "content_diversity": 0.5438752770423889,
+        "session_engagement": 0.5762627720832825,
+        "ui_adaptation": 0.5135920643806458,
+        "temporal_consistency": 0.4785875678062439,
+        "multi_platform_behavior": 0.41252401471138,
+        "voice_usage": 0.21832506358623505,
+        "recommendation_acceptance": 0.6262914538383484,
+        "search_sophistication": 0.48402610421180725,
+        "device_preference": 0.5402240753173828,
+        "peak_alignment": 0.4774375259876251,
+        "return_likelihood": 0.6604996919631958
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 9,
+      "sequence_length": 16,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43058037757873535,
+        "decision_confidence": 0.6541996002197266,
+        "frustration_level": 0.3150997459888458,
+        "exploration_tendency": 0.5364206433296204,
+        "attention_span": 0.7018429636955261,
+        "navigation_efficiency": 0.604377031326294,
+        "platform_loyalty": 0.47740450501441956,
+        "social_influence": 0.3984803855419159,
+        "price_sensitivity": 0.423866331577301,
+        "content_diversity": 0.5438113808631897,
+        "session_engagement": 0.5762499570846558,
+        "ui_adaptation": 0.5135626196861267,
+        "temporal_consistency": 0.4785178303718567,
+        "multi_platform_behavior": 0.41249600052833557,
+        "voice_usage": 0.21818804740905762,
+        "recommendation_acceptance": 0.6262801289558411,
+        "search_sophistication": 0.4840245544910431,
+        "device_preference": 0.5400971174240112,
+        "peak_alignment": 0.4774952530860901,
+        "return_likelihood": 0.6605591773986816
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 10,
+      "sequence_length": 28,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43051207065582275,
+        "decision_confidence": 0.6541000604629517,
+        "frustration_level": 0.31514135003089905,
+        "exploration_tendency": 0.5364665985107422,
+        "attention_span": 0.70188307762146,
+        "navigation_efficiency": 0.6043404340744019,
+        "platform_loyalty": 0.477356880903244,
+        "social_influence": 0.39843231439590454,
+        "price_sensitivity": 0.42386144399642944,
+        "content_diversity": 0.5438629984855652,
+        "session_engagement": 0.5762672424316406,
+        "ui_adaptation": 0.5135431289672852,
+        "temporal_consistency": 0.47855517268180847,
+        "multi_platform_behavior": 0.4125494956970215,
+        "voice_usage": 0.21836991608142853,
+        "recommendation_acceptance": 0.6262519359588623,
+        "search_sophistication": 0.48406800627708435,
+        "device_preference": 0.54004967212677,
+        "peak_alignment": 0.4774647057056427,
+        "return_likelihood": 0.6605238318443298
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 11,
+      "sequence_length": 20,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.4297417998313904,
+        "decision_confidence": 0.6508188843727112,
+        "frustration_level": 0.31489089131355286,
+        "exploration_tendency": 0.5368951559066772,
+        "attention_span": 0.7035260200500488,
+        "navigation_efficiency": 0.6057800054550171,
+        "platform_loyalty": 0.47821444272994995,
+        "social_influence": 0.39954185485839844,
+        "price_sensitivity": 0.42271149158477783,
+        "content_diversity": 0.5441491603851318,
+        "session_engagement": 0.5762770175933838,
+        "ui_adaptation": 0.5123105645179749,
+        "temporal_consistency": 0.4782288670539856,
+        "multi_platform_behavior": 0.4143410623073578,
+        "voice_usage": 0.22124768793582916,
+        "recommendation_acceptance": 0.62534099817276,
+        "search_sophistication": 0.4853626489639282,
+        "device_preference": 0.5365129709243774,
+        "peak_alignment": 0.4776051938533783,
+        "return_likelihood": 0.6604194045066833
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 12,
+      "sequence_length": 18,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43020686507225037,
+        "decision_confidence": 0.6532607078552246,
+        "frustration_level": 0.3149923086166382,
+        "exploration_tendency": 0.5366992354393005,
+        "attention_span": 0.7023296356201172,
+        "navigation_efficiency": 0.6043709516525269,
+        "platform_loyalty": 0.47756049036979675,
+        "social_influence": 0.3987135887145996,
+        "price_sensitivity": 0.4233511686325073,
+        "content_diversity": 0.5438485145568848,
+        "session_engagement": 0.5763294100761414,
+        "ui_adaptation": 0.5131938457489014,
+        "temporal_consistency": 0.47837457060813904,
+        "multi_platform_behavior": 0.4129130244255066,
+        "voice_usage": 0.21917158365249634,
+        "recommendation_acceptance": 0.6259440183639526,
+        "search_sophistication": 0.48443397879600525,
+        "device_preference": 0.5389404892921448,
+        "peak_alignment": 0.4775552749633789,
+        "return_likelihood": 0.6607499122619629
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 13,
+      "sequence_length": 20,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.4298105835914612,
+        "decision_confidence": 0.6515031456947327,
+        "frustration_level": 0.31502851843833923,
+        "exploration_tendency": 0.5368686318397522,
+        "attention_span": 0.7031893134117126,
+        "navigation_efficiency": 0.6053028702735901,
+        "platform_loyalty": 0.47788795828819275,
+        "social_influence": 0.3991502821445465,
+        "price_sensitivity": 0.42301732301712036,
+        "content_diversity": 0.5441303849220276,
+        "session_engagement": 0.5763177275657654,
+        "ui_adaptation": 0.5125901103019714,
+        "temporal_consistency": 0.47837182879447937,
+        "multi_platform_behavior": 0.41396352648735046,
+        "voice_usage": 0.22081033885478973,
+        "recommendation_acceptance": 0.6255115866661072,
+        "search_sophistication": 0.4850303828716278,
+        "device_preference": 0.5373162627220154,
+        "peak_alignment": 0.4775483310222626,
+        "return_likelihood": 0.660347044467926
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 14,
+      "sequence_length": 29,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43007588386535645,
+        "decision_confidence": 0.6534904837608337,
+        "frustration_level": 0.3161250352859497,
+        "exploration_tendency": 0.5364716053009033,
+        "attention_span": 0.7022895812988281,
+        "navigation_efficiency": 0.6052079200744629,
+        "platform_loyalty": 0.47670260071754456,
+        "social_influence": 0.39791709184646606,
+        "price_sensitivity": 0.4245539903640747,
+        "content_diversity": 0.5444684624671936,
+        "session_engagement": 0.5763634443283081,
+        "ui_adaptation": 0.5135953426361084,
+        "temporal_consistency": 0.4792706370353699,
+        "multi_platform_behavior": 0.4134284555912018,
+        "voice_usage": 0.22008812427520752,
+        "recommendation_acceptance": 0.6262380480766296,
+        "search_sophistication": 0.4841306805610657,
+        "device_preference": 0.54007887840271,
+        "peak_alignment": 0.4768564701080322,
+        "return_likelihood": 0.6596257090568542
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 15,
+      "sequence_length": 18,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43040838837623596,
+        "decision_confidence": 0.6540805101394653,
+        "frustration_level": 0.3156455159187317,
+        "exploration_tendency": 0.5364798307418823,
+        "attention_span": 0.7018163204193115,
+        "navigation_efficiency": 0.6044986248016357,
+        "platform_loyalty": 0.47693225741386414,
+        "social_influence": 0.39802002906799316,
+        "price_sensitivity": 0.4243670701980591,
+        "content_diversity": 0.544224202632904,
+        "session_engagement": 0.5763106346130371,
+        "ui_adaptation": 0.5136805772781372,
+        "temporal_consistency": 0.4789973497390747,
+        "multi_platform_behavior": 0.41273221373558044,
+        "voice_usage": 0.21893636882305145,
+        "recommendation_acceptance": 0.6263081431388855,
+        "search_sophistication": 0.4839695692062378,
+        "device_preference": 0.5405177474021912,
+        "peak_alignment": 0.47713008522987366,
+        "return_likelihood": 0.6599404215812683
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 16,
+      "sequence_length": 20,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.4295956790447235,
+        "decision_confidence": 0.6514514088630676,
+        "frustration_level": 0.31543779373168945,
+        "exploration_tendency": 0.5370239615440369,
+        "attention_span": 0.7031335234642029,
+        "navigation_efficiency": 0.6052032113075256,
+        "platform_loyalty": 0.47745296359062195,
+        "social_influence": 0.39862436056137085,
+        "price_sensitivity": 0.42325201630592346,
+        "content_diversity": 0.5444012880325317,
+        "session_engagement": 0.5763686895370483,
+        "ui_adaptation": 0.512737512588501,
+        "temporal_consistency": 0.4787185490131378,
+        "multi_platform_behavior": 0.4140956997871399,
+        "voice_usage": 0.22145897150039673,
+        "recommendation_acceptance": 0.6255937218666077,
+        "search_sophistication": 0.4851725399494171,
+        "device_preference": 0.5377451181411743,
+        "peak_alignment": 0.47722962498664856,
+        "return_likelihood": 0.6601462960243225
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 17,
+      "sequence_length": 10,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.4303356111049652,
+        "decision_confidence": 0.6539048552513123,
+        "frustration_level": 0.3154084086418152,
+        "exploration_tendency": 0.536577582359314,
+        "attention_span": 0.7019481658935547,
+        "navigation_efficiency": 0.604250967502594,
+        "platform_loyalty": 0.47708311676979065,
+        "social_influence": 0.39817026257514954,
+        "price_sensitivity": 0.4240201711654663,
+        "content_diversity": 0.5440799593925476,
+        "session_engagement": 0.5763183236122131,
+        "ui_adaptation": 0.5135614275932312,
+        "temporal_consistency": 0.4787774384021759,
+        "multi_platform_behavior": 0.4127410352230072,
+        "voice_usage": 0.21896468102931976,
+        "recommendation_acceptance": 0.6262143850326538,
+        "search_sophistication": 0.4841049909591675,
+        "device_preference": 0.5400879979133606,
+        "peak_alignment": 0.4772741198539734,
+        "return_likelihood": 0.660290539264679
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 18,
+      "sequence_length": 18,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.43028149008750916,
+        "decision_confidence": 0.6534821391105652,
+        "frustration_level": 0.3152362108230591,
+        "exploration_tendency": 0.5367360711097717,
+        "attention_span": 0.7020344734191895,
+        "navigation_efficiency": 0.6042253375053406,
+        "platform_loyalty": 0.47729215025901794,
+        "social_influence": 0.3983272612094879,
+        "price_sensitivity": 0.4237520396709442,
+        "content_diversity": 0.5440798401832581,
+        "session_engagement": 0.5763165354728699,
+        "ui_adaptation": 0.5133802890777588,
+        "temporal_consistency": 0.4786735773086548,
+        "multi_platform_behavior": 0.4127519130706787,
+        "voice_usage": 0.21916045248508453,
+        "recommendation_acceptance": 0.6260776519775391,
+        "search_sophistication": 0.4843118190765381,
+        "device_preference": 0.5396657586097717,
+        "peak_alignment": 0.4773680865764618,
+        "return_likelihood": 0.6603705883026123
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 19,
+      "sequence_length": 26,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.4297133684158325,
+        "decision_confidence": 0.6527354121208191,
+        "frustration_level": 0.31594404578208923,
+        "exploration_tendency": 0.5369678735733032,
+        "attention_span": 0.7024914026260376,
+        "navigation_efficiency": 0.6043398976325989,
+        "platform_loyalty": 0.47668957710266113,
+        "social_influence": 0.3977905213832855,
+        "price_sensitivity": 0.4241802394390106,
+        "content_diversity": 0.5445248484611511,
+        "session_engagement": 0.5764539837837219,
+        "ui_adaptation": 0.5132945775985718,
+        "temporal_consistency": 0.47920629382133484,
+        "multi_platform_behavior": 0.41359448432922363,
+        "voice_usage": 0.22100791335105896,
+        "recommendation_acceptance": 0.6259163618087769,
+        "search_sophistication": 0.4843592345714569,
+        "device_preference": 0.5394324064254761,
+        "peak_alignment": 0.47688916325569153,
+        "return_likelihood": 0.6598018407821655
+      },
+      "all_valid": true
+    },
+    {
+      "test_id": 20,
+      "sequence_length": 22,
+      "status": "PASS",
+      "predictions": {
+        "cognitive_load": 0.4305032789707184,
+        "decision_confidence": 0.6540935039520264,
+        "frustration_level": 0.3152041733264923,
+        "exploration_tendency": 0.5364711880683899,
+        "attention_span": 0.7018691301345825,
+        "navigation_efficiency": 0.6043304204940796,
+        "platform_loyalty": 0.47729557752609253,
+        "social_influence": 0.39835622906684875,
+        "price_sensitivity": 0.4239509403705597,
+        "content_diversity": 0.5439260601997375,
+        "session_engagement": 0.576259970664978,
+        "ui_adaptation": 0.5135657787322998,
+        "temporal_consistency": 0.4786195456981659,
+        "multi_platform_behavior": 0.4125784635543823,
+        "voice_usage": 0.2184365838766098,
+        "recommendation_acceptance": 0.6262572407722473,
+        "search_sophistication": 0.48405030369758606,
+        "device_preference": 0.540141224861145,
+        "peak_alignment": 0.47741904854774475,
+        "return_likelihood": 0.6604175567626953
+      },
+      "all_valid": true
+    }
+  ],
+  "trait_analysis": {
+    "cognitive_load": {
+      "mean": 0.4301165372133255,
+      "std": 0.00039448951858217,
+      "min": 0.4289597272872925,
+      "max": 0.43065500259399414,
+      "median": 0.43015630543231964
+    },
+    "decision_confidence": {
+      "mean": 0.6530457353591919,
+      "std": 0.0012669344452429514,
+      "min": 0.6492461562156677,
+      "max": 0.6544484496116638,
+      "median": 0.6532118916511536
+    },
+    "frustration_level": {
+      "mean": 0.3153768104314804,
+      "std": 0.0003397643406049257,
+      "min": 0.3149923086166382,
+      "max": 0.3171651363372803,
+      "median": 0.3153216689825058
+    },
+    "exploration_tendency": {
+      "mean": 0.5367402660846711,
+      "std": 0.0003134224379281803,
+      "min": 0.5363540649414062,
+      "max": 0.5377601981163025,
+      "median": 0.5366749167442322
+    },
+    "attention_span": {
+      "mean": 0.7023330473899841,
+      "std": 0.0005710949991917397,
+      "min": 0.7017282247543335,
+      "max": 0.7041674852371216,
+      "median": 0.7022067010402679
+    },
+    "navigation_efficiency": {
+      "mean": 0.604562748670578,
+      "std": 0.00047160030619659664,
+      "min": 0.6037095189094543,
+      "max": 0.6061772704124451,
+      "median": 0.604455292224884
+    },
+    "platform_loyalty": {
+      "mean": 0.4772727346420288,
+      "std": 0.00033633445334413744,
+      "min": 0.47596174478530884,
+      "max": 0.47816166281700134,
+      "median": 0.4772300273180008
+    },
+    "social_influence": {
+      "mean": 0.3983737599849701,
+      "std": 0.00038585910640756213,
+      "min": 0.39689141511917114,
+      "max": 0.3993997871875763,
+      "median": 0.39830316603183746
+    },
+    "price_sensitivity": {
+      "mean": 0.42377989768981933,
+      "std": 0.0004330233610759014,
+      "min": 0.4227181375026703,
+      "max": 0.4254271388053894,
+      "median": 0.42385806143283844
+    },
+    "content_diversity": {
+      "mean": 0.544152010679245,
+      "std": 0.00027715917214234223,
+      "min": 0.5437727570533752,
+      "max": 0.5453615188598633,
+      "median": 0.544101744890213
+    },
+    "session_engagement": {
+      "mean": 0.5763314187526702,
+      "std": 6.816830209757711e-05,
+      "min": 0.5762245059013367,
+      "max": 0.5764800310134888,
+      "median": 0.5763281583786011
+    },
+    "ui_adaptation": {
+      "mean": 0.5132463610172272,
+      "std": 0.0004426240521959929,
+      "min": 0.5118333101272583,
+      "max": 0.5137253999710083,
+      "median": 0.5133238434791565
+    },
+    "temporal_consistency": {
+      "mean": 0.47873704314231874,
+      "std": 0.0003016154989280669,
+      "min": 0.4783508777618408,
+      "max": 0.4803615212440491,
+      "median": 0.47869089245796204
+    },
+    "multi_platform_behavior": {
+      "mean": 0.4131745344400406,
+      "std": 0.0007297958605315814,
+      "min": 0.412384569644928,
+      "max": 0.4156932234764099,
+      "median": 0.4129258692264557
+    },
+    "voice_usage": {
+      "mean": 0.21975718438625336,
+      "std": 0.0014528403410027685,
+      "min": 0.2179258167743683,
+      "max": 0.22382752597332,
+      "median": 0.21950167417526245
+    },
+    "recommendation_acceptance": {
+      "mean": 0.6259903144836426,
+      "std": 0.0003281488266023746,
+      "min": 0.6249905228614807,
+      "max": 0.6263782978057861,
+      "median": 0.6260104477405548
+    },
+    "search_sophistication": {
+      "mean": 0.48440686106681824,
+      "std": 0.00042554488458853695,
+      "min": 0.4839290380477905,
+      "max": 0.48570436239242554,
+      "median": 0.48434193432331085
+    },
+    "device_preference": {
+      "mean": 0.5392800092697143,
+      "std": 0.0011641384307570642,
+      "min": 0.5358278155326843,
+      "max": 0.5405250191688538,
+      "median": 0.5395042896270752
+    },
+    "peak_alignment": {
+      "mean": 0.4772887134552002,
+      "std": 0.00025333337813299053,
+      "min": 0.4758822023868561,
+      "max": 0.4775383174419403,
+      "median": 0.4773169904947281
+    },
+    "return_likelihood": {
+      "mean": 0.6602255344390869,
+      "std": 0.00035504986428880765,
+      "min": 0.6584890484809875,
+      "max": 0.6606216430664062,
+      "median": 0.6602914929389954
+    }
+  }
+}

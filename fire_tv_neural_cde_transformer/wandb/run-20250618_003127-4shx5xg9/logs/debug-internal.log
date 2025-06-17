@@ -1,0 +1,16 @@
+{"time":"2025-06-18T00:31:28.0478916+05:30","level":"INFO","msg":"stream: starting","core version":"0.20.1","symlink path":"C:\\Users\\solos\\OneDrive\\Documents\\College\\Projects\\Advanced Behavioural Analysis for Content Recommendation\\Shosyn\\fire_tv_neural_cde_transformer\\wandb\\run-20250618_003127-4shx5xg9\\logs\\debug-core.log"}
+{"time":"2025-06-18T00:31:29.1868878+05:30","level":"INFO","msg":"stream: created new stream","id":"4shx5xg9"}
+{"time":"2025-06-18T00:31:29.1873962+05:30","level":"INFO","msg":"stream: started","id":"4shx5xg9"}
+{"time":"2025-06-18T00:31:29.1873962+05:30","level":"INFO","msg":"handler: started","stream_id":"4shx5xg9"}
+{"time":"2025-06-18T00:31:29.1879174+05:30","level":"INFO","msg":"writer: Do: started","stream_id":"4shx5xg9"}
+{"time":"2025-06-18T00:31:29.1879174+05:30","level":"INFO","msg":"sender: started","stream_id":"4shx5xg9"}
+{"time":"2025-06-18T00:31:29.70133+05:30","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-06-18T00:31:35.4413353+05:30","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-06-18T00:31:35.4413353+05:30","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-06-18T00:31:36.4520766+05:30","level":"INFO","msg":"handler: operation stats","stats":{"operations":[{"desc":"uploading output.log","runtime_seconds":0.6865338,"progress":"599B/599B"}],"total_operations":1}}
+{"time":"2025-06-18T00:31:37.1645893+05:30","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-06-18T00:31:37.5247844+05:30","level":"INFO","msg":"stream: closing","id":"4shx5xg9"}
+{"time":"2025-06-18T00:31:37.5247844+05:30","level":"INFO","msg":"writer: Close: closed","stream_id":"4shx5xg9"}
+{"time":"2025-06-18T00:31:37.5247844+05:30","level":"INFO","msg":"sender: closed","stream_id":"4shx5xg9"}
+{"time":"2025-06-18T00:31:37.5252916+05:30","level":"INFO","msg":"handler: closed","stream_id":"4shx5xg9"}
+{"time":"2025-06-18T00:31:37.5252916+05:30","level":"INFO","msg":"stream: closed","id":"4shx5xg9"}
