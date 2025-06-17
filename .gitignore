@@ -1,1 +1,6 @@
 venv
+best_fire_tv_neural_cde.pth
+best_fire_tv_neural_cde_fixed.pth
+best_fire_tv_neural_cde_enhanced.pth
+wandb
+fire_tv_neural_cde_transformer/models/final_hybrid_model_cuda.pth
