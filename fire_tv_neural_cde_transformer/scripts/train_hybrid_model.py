@@ -7,240 +7,109 @@ import gc
 import wandb
 from torch.utils.data import DataLoader
 
-# Set CUDA debugging
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-
-# Add project root to Python path
+# Add project root to Python path for clean imports
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from config.model_config import HybridModelConfig
 from config.training_config import TrainingConfig
-from data.data_loader import create_data_loaders
+from data.streaming_data_loader import create_streaming_data_loaders
 from models.hybrid_model import HybridFireTVSystem
 from training.trainer import HybridModelTrainer
 
 def clear_gpu_memory():
-    """Clear GPU memory and check availability"""
+    """Helper function to release and test GPU memory."""
     if torch.cuda.is_available():
         try:
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-            gc.collect()
-            
-            # Test GPU with small tensor
-            test_tensor = torch.randn(10, 10).cuda()
-            del test_tensor
-            torch.cuda.empty_cache()
-            
-            print("✅ GPU memory cleared and available")
+            torch.cuda.empty_cache(); torch.cuda.synchronize(); gc.collect()
+            print("✅ GPU memory cleared.")
             return True
-        except RuntimeError as e:
-            print(f"❌ GPU test failed: {e}")
-            return False
+        except RuntimeError as e: print(f"❌ GPU memory clear failed: {e}"); return False
     return False
 
 def get_safe_device():
-    """Safely detect and return available device"""
-    
-    # Clear GPU memory first
-    gpu_available = clear_gpu_memory()
-    
-    if gpu_available:
-        try:
-            device = torch.device('cuda')
-            print(f"🚀 Using GPU: {torch.cuda.get_device_name(0)}")
-            print(f"   GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-            return device
-        except Exception as e:
-            print(f"❌ GPU initialization failed: {e}")
-    
-    print("💻 Using CPU for training")
-    return torch.device('cpu')
+    """Selects GPU if available and safe, otherwise defaults to CPU."""
+    if torch.cuda.is_available():
+        print("🔍 CUDA is available. Checking GPU status...")
+        if clear_gpu_memory():
+            try:
+                device = torch.device('cuda')
+                print(f"🚀 Using GPU: {torch.cuda.get_device_name(0)}")
+                return device
+            except Exception as e: print(f"❌ GPU initialization failed: {e}")
+    print("💻 GPU not available or failed. Using CPU for training."); return torch.device('cpu')
 
 def debug_data_loader(data_loader):
-    """Debug function to check data loader output"""
-    print("🔍 Debugging data loader...")
-    
+    """Prints the shape and type of the first few batches from a data loader."""
+    print("🔍 Debugging data loader output...")
     try:
-        for i, batch in enumerate(data_loader):
-            print(f"Batch {i}:")
-            print(f"  Type: {type(batch)}")
-            
-            if isinstance(batch, dict):
-                print(f"  Keys: {list(batch.keys())}")
-                for key, value in batch.items():
-                    if isinstance(value, torch.Tensor):
-                        print(f"    {key}: {value.shape}")
-                    elif isinstance(value, dict):
-                        print(f"    {key}: dict with keys {list(value.keys())}")
-                        for subkey, subvalue in value.items():
-                            if isinstance(subvalue, torch.Tensor):
-                                print(f"      {subkey}: {subvalue.shape}")
-                    else:
-                        print(f"    {key}: {type(value)} - length: {len(value) if hasattr(value, '__len__') else 'N/A'}")
-            else:
-                print(f"  Content type: {type(batch)}")
-            
-            if i >= 1:  # Only check first 2 batches
-                break
-                
+        for i, (features, labels) in enumerate(data_loader):
+            print(f"  Batch {i}:"); print(f"    Features - Type: {type(features)}, Shape: {features.shape}, Dtype: {features.dtype}"); print(f"    Labels   - Type: {type(labels)}, Shape: {labels.shape}, Dtype: {labels.dtype}")
+            if i >= 1: break
+        print("✅ Data loader debug check passed.")
     except Exception as e:
-        print(f"❌ Error in debug: {e}")
+        print(f"❌ Error during data loader debug: {e}"); import traceback; traceback.print_exc()
 
 def main():
-    """FIXED: Main training script with proper variable scope"""
-    
-    print("🧪 Fire TV Neural CDE + Transformer Training")
-    print("=" * 50)
-    
-    # Initialize variables to None
-    train_loader = None
-    val_loader = None
-    model = None
-    trainer = None
-    
+    """Main training script updated to handle large datasets via streaming."""
+    print("🧪 Fire TV Psychological Recommendation Engine Training 🧪")
+    print("=" * 60)
+    train_loader = val_loader = model = trainer = None
     try:
-        # Get safe device
         device = get_safe_device()
-        
-        # Initialize wandb
-        wandb.init(project="fire-tv-neural-cde-transformer")
-        
-        # Configuration with reduced model size for GPU compatibility
+        wandb.init(project="firetv-psychological-recommendation-engine")
         model_config = HybridModelConfig()
         training_config = TrainingConfig()
         
-        # Adjust batch size based on device and GPU memory
-        if device.type == 'cuda':
-            # For RTX 3050 with 4.3GB, use smaller batch size
-            training_config.batch_size = 4
-            print("📉 Reduced batch size to 4 for GPU memory optimization")
-        else:
-            training_config.batch_size = 2
-            print("📉 Reduced batch size to 2 for CPU training")
+        DATASET_PATH = r"C:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\fire_tv_production_dataset_parallel.csv"
         
-        # Data loading with error handling
-        print("📊 Loading data...")
-        try:
-            train_loader, val_loader = create_data_loaders(
-                data_path="data/fire_tv_dataset.csv",
-                batch_size=training_config.batch_size,
-                validation_split=training_config.validation_split
-            )
-            print("✅ Data loaded successfully")
-            
-            # Debug data structure AFTER successful loading
-            print("🔍 Debugging data structure...")
-            debug_data_loader(train_loader)
-            
-        except Exception as e:
-            print(f"❌ Data loading failed: {e}")
-            print("🔄 Trying with simple data loader...")
-            
-            # Fallback to simple data loader
-            from data.simple_data_loader import create_simple_data_loaders
-            train_loader, val_loader = create_simple_data_loaders(
-                batch_size=training_config.batch_size,
-                num_samples=800
-            )
-            print("✅ Simple data loader created successfully")
-            debug_data_loader(train_loader)
-        
-        # Model creation
+        all_cols = ['user_id', 'session_id', 'interaction_timestamp', 'interaction_type', 'dpad_up_count', 'dpad_down_count', 'dpad_left_count', 'dpad_right_count', 'back_button_presses', 'menu_revisits', 'scroll_speed', 'hover_duration', 'time_since_last_interaction', 'cpu_usage_percent', 'wifi_signal_strength', 'network_latency_ms', 'device_temperature', 'battery_level', 'time_of_day', 'day_of_week', 'content_id', 'content_type', 'content_genre', 'release_year', 'search_sophistication_pattern', 'navigation_efficiency_score', 'recommendation_engagement_pattern', 'cognitive_load_indicator', 'decision_confidence_score', 'frustration_level', 'attention_span_indicator', 'exploration_tendency_score', 'platform_loyalty_score', 'social_influence_factor', 'price_sensitivity_score', 'content_diversity_preference', 'session_engagement_level', 'ui_adaptation_speed', 'temporal_consistency_pattern', 'multi_platform_behavior_indicator', 'voice_command_usage_frequency', 'return_likelihood_score']
+        label_columns = ['cognitive_load_indicator', 'decision_confidence_score', 'frustration_level', 'attention_span_indicator', 'exploration_tendency_score', 'platform_loyalty_score', 'social_influence_factor', 'price_sensitivity_score', 'content_diversity_preference', 'session_engagement_level', 'ui_adaptation_speed', 'temporal_consistency_pattern', 'multi_platform_behavior_indicator', 'voice_command_usage_frequency', 'return_likelihood_score']
+        categorical_cols = ['search_sophistication_pattern', 'recommendation_engagement_pattern', 'interaction_type', 'content_type']
+        cols_to_exclude_from_features = label_columns + categorical_cols + ['user_id', 'session_id', 'interaction_timestamp', 'content_id', 'content_genre']
+        feature_columns = [col for col in all_cols if col not in cols_to_exclude_from_features]
+        print(f"Identified {len(feature_columns)} feature columns and {len(label_columns)} label columns.")
+
+        print(f"📊 Loading data from {DATASET_PATH} using streaming...")
+        train_loader, val_loader = create_streaming_data_loaders(data_path=DATASET_PATH, feature_cols=feature_columns, label_cols=label_columns, batch_size=training_config.batch_size, chunksize=50000)
+        print("✅ Streaming data loader created successfully.")
+        debug_data_loader(train_loader)
+
+        # --- CORRECTED MODEL INITIALIZATION ---
         print("🏗️ Creating hybrid model...")
-        try:
-            model = HybridFireTVSystem(model_config)
-            param_count = sum(p.numel() for p in model.parameters())
-            print(f"✅ Model created with {param_count:,} parameters")
-            
-            # Memory estimation
-            if device.type == 'cuda':
-                model_memory = param_count * 4 / 1e9  # 4 bytes per float32 parameter
-                print(f"📊 Estimated model memory: {model_memory:.2f} GB")
-                
-                # Check if model fits in GPU memory
-                available_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
-                if model_memory > available_memory * 0.8:  # Use 80% of available memory
-                    print(f"⚠️ Model may be too large for GPU ({model_memory:.2f}GB > {available_memory*0.8:.2f}GB)")
-                    print("🔄 Switching to CPU...")
-                    device = torch.device('cpu')
-                
-        except Exception as e:
-            print(f"❌ Model creation failed: {e}")
-            return None
         
-        # Trainer initialization with error handling
+        # Step 1: Update the config object with the dynamic dimensions from your data.
+        model_config.input_dim = len(feature_columns)
+        model_config.output_dim = len(label_columns)
+        
+        # Step 2: Pass ONLY the single, updated config object to the model.
+        # The argument name 'config' must match the __init__ method in HybridFireTVSystem.
+        model = HybridFireTVSystem(config=model_config).to(device)
+        
+        print(f"✅ Model created with {sum(p.numel() for p in model.parameters() if p.requires_grad):,} trainable parameters.")
+        # --- END OF CORRECTION ---
+
         print("🎯 Initializing trainer...")
-        try:
-            trainer = HybridModelTrainer(model, training_config, device)
-            print("✅ Trainer initialized successfully")
-        except RuntimeError as cuda_error:
-            if "CUDA" in str(cuda_error) or "out of memory" in str(cuda_error).lower():
-                print(f"❌ GPU error in trainer: {cuda_error}")
-                print("🔄 Retrying with CPU...")
-                device = torch.device('cpu')
-                trainer = HybridModelTrainer(model, training_config, device)
-                print("✅ Trainer initialized with CPU")
-            else:
-                print(f"❌ Trainer initialization failed: {cuda_error}")
-                return None
-        
-        # Training
-        print("🚀 Starting training...")
-        try:
-            history = trainer.train(train_loader, val_loader, training_config.num_epochs)
-            print("✅ Training completed successfully!")
-        except Exception as e:
-            print(f"❌ Training failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-        
-        # Save final model
-        try:
-            model_path = f"models/final_hybrid_model_{device.type}.pth"
-            os.makedirs("models", exist_ok=True)  # Create models directory if it doesn't exist
-            torch.save(model.state_dict(), model_path)
-            print(f"💾 Model saved as {model_path}")
-        except Exception as e:
-            print(f"❌ Model saving failed: {e}")
-        
+        trainer = HybridModelTrainer(model, training_config, device)
+        print("✅ Trainer initialized.")
+
+        print("🚀🚀🚀 Starting training... 🚀🚀🚀")
+        history = trainer.train(train_loader, val_loader, training_config.num_epochs)
+        print("✅ Training completed successfully!")
+
+        model_path = f"models/final_hybrid_model_{device.type}.pth"
+        os.makedirs("models", exist_ok=True)
+        torch.save(model.state_dict(), model_path)
+        print(f"💾 Model saved to {model_path}")
         return history
-        
+
     except Exception as e:
-        print(f"❌ Unexpected error in main: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-    
+        print(f"❌ An unexpected error occurred in the main training loop: {e}"); import traceback; traceback.print_exc(); return None
     finally:
-        # Clean up resources
-        try:
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            wandb.finish()
-        except:
-            pass
+        if torch.cuda.is_available(): torch.cuda.empty_cache()
+        wandb.finish()
+        print("🧹 Cleaned up resources and finished wandb session.")
 
 if __name__ == "__main__":
-    try:
-        history = main()
-        if history:
-            print("🎉 Training pipeline completed successfully!")
-        else:
-            print("❌ Training pipeline failed")
-    except KeyboardInterrupt:
-        print("\n⏹️ Training interrupted by user")
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        # Final cleanup
-        try:
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            wandb.finish()
-        except:
-            pass
+    main()

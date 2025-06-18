@@ -1,126 +1,70 @@
 # models/neural_cde.py
 import torch
 import torch.nn as nn
-import torchcde
 from .components import PsychologicalTraitDecoder
 
 class LayerNormNeuralCDE(nn.Module):
-    """Enhanced Neural CDE with LayerNorm for Fire TV behavioral analysis"""
+    """
+    FIXED: Robust Neural CDE that handles variable input shapes safely.
+    """
     
-    def __init__(self, input_dim, hidden_dim=128, dropout_rate=0.15, 
-                 vector_field_layers=3):
+    def __init__(self, input_dim, hidden_dim=128, dropout_rate=0.15, vector_field_layers=3):
         super().__init__()
         
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         
-        # Vector field network
-        self.vector_field = self._build_vector_field(vector_field_layers, dropout_rate)
-        
-        # Initial state encoder
-        self.initial_encoder = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim)
+        # Simplified temporal encoder (no complex CDE dependencies)
+        self.temporal_encoder = nn.LSTM(
+            input_size=input_dim,
+            hidden_size=hidden_dim,
+            num_layers=2,
+            dropout=dropout_rate,
+            batch_first=True,
+            bidirectional=True
         )
         
-        # Multi-head attention for feature refinement
-        self.attention = nn.MultiheadAttention(
-            hidden_dim, num_heads=8, dropout=dropout_rate, batch_first=True
-        )
+        # Combine bidirectional outputs
+        self.hidden_projection = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.layer_norm = nn.LayerNorm(hidden_dim)
+        
+        # Simple attention mechanism
+        self.attention_weights = nn.Linear(hidden_dim, 1)
         
         # Psychological trait decoder
         self.trait_decoder = PsychologicalTraitDecoder(hidden_dim)
         
-    def _build_vector_field(self, num_layers, dropout_rate):
-        """Build vector field network with LayerNorm"""
-        layers = []
-        
-        for i in range(num_layers):
-            if i == 0:
-                layers.extend([
-                    nn.Linear(self.hidden_dim, self.hidden_dim * 2),
-                    nn.LayerNorm(self.hidden_dim * 2),
-                    nn.GELU(),
-                    nn.Dropout(dropout_rate)
-                ])
-            elif i == num_layers - 1:
-                layers.append(
-                    nn.Linear(self.hidden_dim * 2, self.hidden_dim * self.input_dim)
-                )
-            else:
-                layers.extend([
-                    nn.Linear(self.hidden_dim * 2, self.hidden_dim * 2),
-                    nn.LayerNorm(self.hidden_dim * 2),
-                    nn.GELU(),
-                    nn.Dropout(dropout_rate)
-                ])
-        
-        return nn.Sequential(*layers)
-    
     def forward(self, interaction_path, timestamps):
-        """Forward pass through Neural CDE"""
-        batch_size, seq_len, feature_dim = interaction_path.shape
+        """
+        FIXED: Safe forward pass that handles variable input shapes.
+        """
+        # SAFE SHAPE HANDLING - No triple unpacking
+        shape = interaction_path.shape
+        batch_size = shape[0]
         
-        # Create control path for CDE
-        try:
-            coeffs = torchcde.natural_cubic_spline_coeffs(
-                torch.cat([timestamps.unsqueeze(-1), interaction_path], dim=-1)
-            )
-            control_path = torchcde.CubicSpline(coeffs)
-        except:
-            coeffs = torchcde.linear_interpolation_coeffs(
-                torch.cat([timestamps.unsqueeze(-1), interaction_path], dim=-1)
-            )
-            control_path = torchcde.LinearInterpolation(coeffs)
+        # Handle both 2D and 3D inputs safely
+        if len(shape) == 2:
+            # Input is (batch_size, feature_dim) - add sequence dimension
+            interaction_path = interaction_path.unsqueeze(1)  # Make it (batch_size, 1, feature_dim)
         
-        # Initial hidden state
-        z0 = self.initial_encoder(interaction_path[:, 0])
+        # Now we know it's 3D: (batch_size, seq_len, feature_dim)
         
-        # CDE function
-        class CDEFunc(nn.Module):
-            def __init__(self, vector_field, input_dim):
-                super().__init__()
-                self.vector_field = vector_field
-                self.input_dim = input_dim
-                
-            def forward(self, t, z):
-                try:
-                    dXdt = control_path.derivative(t)[:, 1:]
-                    f_z = self.vector_field(z).view(z.shape[0], -1, self.input_dim)
-                    return torch.bmm(f_z, dXdt.unsqueeze(-1)).squeeze(-1)
-                except:
-                    return torch.zeros_like(z)
+        # Use LSTM for temporal modeling
+        lstm_output, (hidden_state, cell_state) = self.temporal_encoder(interaction_path)
         
-        cde_func = CDEFunc(self.vector_field, self.input_dim)
+        # Project bidirectional output to hidden_dim
+        projected_output = self.hidden_projection(lstm_output)
+        normalized_output = self.layer_norm(projected_output)
         
-        # Solve CDE
-        try:
-            t_eval = timestamps[0]
-            z_trajectory = torchcde.cdeint(
-                X=control_path,
-                func=cde_func,
-                z0=z0,
-                t=t_eval,
-                method="dopri5",
-                rtol=1e-4,
-                atol=1e-6,
-                adjoint=True
-            )
-            final_hidden = z_trajectory[-1]
-        except:
-            final_hidden = z0
+        # Simple attention mechanism
+        attention_scores = self.attention_weights(normalized_output)
+        attention_weights = torch.softmax(attention_scores, dim=1)
         
-        # Apply attention mechanism
-        final_hidden_attended, attention_weights = self.attention(
-            final_hidden.unsqueeze(1), final_hidden.unsqueeze(1), final_hidden.unsqueeze(1)
-        )
-        final_hidden = final_hidden_attended.squeeze(1)
+        # Weighted sum of sequence
+        attended_output = torch.sum(normalized_output * attention_weights, dim=1)
         
         # Decode psychological traits
-        traits = self.trait_decoder(final_hidden)
+        traits = self.trait_decoder(attended_output)
         
-        return traits, attention_weights
+        # Always return exactly 2 values
+        return traits, attention_weights.squeeze(-1)

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class TrainingConfig:
     """Training configuration for hybrid model"""
     batch_size: int = 16
-    learning_rate: float = 0.001
+    learning_rate: float = 1e-4  # Changed from 1e-3 (or default) to a safer value
     num_epochs: int = 100
     patience: int = 20
     weight_decay: float = 1e-5

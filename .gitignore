@@ -10,3 +10,8 @@ wandb/
 # Just in case specific files are not caught by wildcard:
 fire_tv_neural_cde_transformer/models/final_hybrid_model_cuda.pth
 fire_tv_neural_cde_transformer/models/best_hybrid_model.pth
+
+fire_tv_enhanced_realistic_dataset.csv
+fire_tv_realistic_interactions.csv
+
+*.csv

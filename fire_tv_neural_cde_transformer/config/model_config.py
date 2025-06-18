@@ -47,6 +47,8 @@ class RecommendationConfig:
 @dataclass
 class HybridModelConfig:
     """Complete hybrid model configuration"""
+    input_dim: int = 16  # Default value, will be updated in training script
+    output_dim: int = 15 # Default value, will be updated in training script
     neural_cde: NeuralCDEConfig = None
     transformer: TransformerConfig = None
     multimodal: MultiModalConfig = None

@@ -98,54 +98,23 @@ class MultiModalFusion(nn.Module):
         return output
 
 class PsychologicalTraitDecoder(nn.Module):
-    """Decoder for psychological traits with uncertainty estimation"""
+    """FIXED: Simplified decoder that returns a tensor instead of complex dictionary"""
     
-    def __init__(self, input_dim, num_traits=20):
+    def __init__(self, input_dim, num_traits=15):  # Match your actual label count
         super().__init__()
         
-        self.trait_names = [
-            'cognitive_load', 'decision_confidence', 'frustration_level',
-            'exploration_tendency', 'attention_span', 'navigation_efficiency',
-            'platform_loyalty', 'social_influence', 'price_sensitivity',
-            'content_diversity', 'session_engagement', 'ui_adaptation',
-            'temporal_consistency', 'multi_platform_behavior', 'voice_usage',
-            'recommendation_acceptance', 'search_sophistication', 
-            'device_preference', 'peak_alignment', 'return_likelihood'
-        ]
-        
-        # Shared feature extraction
-        self.shared_layers = nn.Sequential(
+        # Simplified architecture that directly outputs trait predictions
+        self.decoder = nn.Sequential(
             nn.Linear(input_dim, 512),
             nn.GELU(),
             nn.Dropout(0.1),
             nn.Linear(512, 256),
             nn.GELU(),
-            nn.Dropout(0.1)
+            nn.Dropout(0.1),
+            nn.Linear(256, num_traits),  # Direct output to trait count
+            nn.Sigmoid()  # Ensure outputs are in [0,1] range
         )
-        
-        # Individual trait decoders with uncertainty
-        self.trait_decoders = nn.ModuleDict({
-            trait: nn.Sequential(
-                nn.Linear(256, 64),
-                nn.GELU(),
-                nn.Dropout(0.1),
-                nn.Linear(64, 2),  # mean and log_variance
-            ) for trait in self.trait_names
-        })
     
     def forward(self, features):
-        shared_features = self.shared_layers(features)
-        
-        trait_outputs = {}
-        for trait_name, decoder in self.trait_decoders.items():
-            output = decoder(shared_features)
-            mean = torch.sigmoid(output[:, 0:1])  # [0, 1] range
-            log_var = output[:, 1:2]  # uncertainty
-            
-            trait_outputs[trait_name] = {
-                'mean': mean,
-                'log_var': log_var,
-                'uncertainty': torch.exp(0.5 * log_var)
-            }
-        
-        return trait_outputs
+        """Returns a simple tensor of shape (batch_size, num_traits)"""
+        return self.decoder(features)
