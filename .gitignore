@@ -15,3 +15,7 @@ fire_tv_enhanced_realistic_dataset.csv
 fire_tv_realistic_interactions.csv
 
 *.csv
+
+simulation_env/
+
+*.txt
