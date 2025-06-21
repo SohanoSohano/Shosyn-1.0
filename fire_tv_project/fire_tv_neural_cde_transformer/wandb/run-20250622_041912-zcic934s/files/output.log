@@ -1,0 +1,28 @@
+Loading synthetic dataset from: C:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\fire_tv_neural_cde_transformer_instance_version\Shosyn-1.0\fire_tv_project\fire_tv_neural_cde_transformer\fire_tv_synthetic_dataset_v3_tmdb.csv
+Loading synthetic dataset from: C:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\fire_tv_neural_cde_transformer_instance_version\Shosyn-1.0\fire_tv_project\fire_tv_neural_cde_transformer\fire_tv_synthetic_dataset_v3_tmdb.csv
+✅ Dataset processed and ready for training.
+   Input features shape (X): torch.Size([900327, 9])  (batch_size, num_behavioral_features)
+   Target labels shape (y):  torch.Size([900327, 3])  (batch_size, num_psychological_traits)
+🔥 DataLoaders created successfully!
+   Training samples: 765,277
+   Validation samples: 135,050
+   Input feature dimension: 9
+   Output label dimension:  3
+🔥 INITIALIZING FOCUSED HYBRID MODEL for Synthetic Training 🔥
+🔧 Initializing focused fusion layer with input dimension: 640
+   Adding Dropout layers (p=0.4) for regularization.
+✅ Model created with 20,414,483 trainable parameters.
+🔧 Configuring optimizer with AdamW and Weight Decay...
+⚖️ Adjusting loss weights to prioritize trait prediction...
+   New Loss Weights: {'traits': 2.5, 'genre': 0.1, 'affinity': 0.2, 'rating': 0.1}
+Traceback (most recent call last):
+  File "c:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\fire_tv_neural_cde_transformer_instance_version\Shosyn-1.0\fire_tv_project\fire_tv_neural_cde_transformer\scripts\train_hybrid_model_tmdb.py", line 146, in <module>
+    main()
+    ~~~~^^
+  File "c:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\fire_tv_neural_cde_transformer_instance_version\Shosyn-1.0\fire_tv_project\fire_tv_neural_cde_transformer\scripts\train_hybrid_model_tmdb.py", line 119, in main
+    trainer = EnhancedHybridModelTrainer(
+        model=model,
+    ...<3 lines>...
+        # Remove tmdb_integration, content_mapping if they are not needed for loss calculation
+    )
+TypeError: EnhancedHybridModelTrainer.__init__() got an unexpected keyword argument 'optimizer'

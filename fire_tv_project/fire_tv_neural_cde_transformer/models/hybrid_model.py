@@ -1,25 +1,27 @@
-# models/hybrid_model.py (Updated for TMDb)
+# models/hybrid_model.py (Focused Version for Synthetic Data Training)
 import torch
 import torch.nn as nn
 from .neural_cde import LayerNormNeuralCDE
-from .transformers import BehavioralSequenceTransformer, FireTVRecommendationTransformer
+from .transformers import BehavioralSequenceTransformer
 
 class HybridFireTVSystem(nn.Module):
     """
-    TMDb-Enhanced Hybrid Model
+    A focused version of the Hybrid Model for training on the synthetic dataset.
+    This version concentrates on the core task: predicting psychological traits
+    from user behavior, and incorporates strong regularization.
     """
     
     def __init__(self, config):
         super().__init__()
         
-        print("🔥 EXECUTING TMDb-ENHANCED HYBRID MODEL 🔥")
-
+        print("🔥 INITIALIZING FOCUSED HYBRID MODEL for Synthetic Training 🔥")
         
         self.config = config
-        self.input_dim = config.input_dim 
-        self.output_dim = config.output_dim
+        # --- MODIFICATION: Dimensions are now simpler ---
+        self.input_dim = config.input_dim  # Expected to be 9 (behavioral features)
+        self.output_dim = config.output_dim # Expected to be 3 (psychological traits)
 
-        # Core components
+        # --- Core components remain the same ---
         self.neural_cde = LayerNormNeuralCDE(
             input_dim=self.input_dim, 
             hidden_dim=config.neural_cde.hidden_dim,
@@ -35,165 +37,78 @@ class HybridFireTVSystem(nn.Module):
             patch_size=config.transformer.patch_size
         )
         
-        # TMDb feature processors 
-        self.tmdb_feature_dim = 70  # Increased from 50 for richer features
-        self.tmdb_processor = nn.Sequential(
-            nn.Linear(self.tmdb_feature_dim, 256),  # Larger network for richer data
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, 128),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(128, 64)
-        )
+        # --- REMOVED: Unnecessary Components for this training phase ---
+        # The tmdb_processor and content_embedding_processor are not needed
+        # because the synthetic data loader does not provide this data.
+        # self.tmdb_processor = ...
+        # self.content_embedding_processor = ...
         
-        self.content_embedding_dim = 384
-        self.content_embedding_processor = nn.Sequential(
-            nn.Linear(self.content_embedding_dim, 256),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, 128),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(128, 64)
-        )
+        # --- MODIFICATION: A simplified fusion network ---
+        # It now fuses only the outputs of the two core components.
+        # The input dimension is calculated based on the CDE and Transformer hidden dimensions.
+        cde_output_dim = config.neural_cde.hidden_dim
+        transformer_output_dim = config.transformer.d_model
+        fused_input_dim = cde_output_dim + transformer_output_dim
         
-        # Dynamic fusion layers
-        self.cde_fusion = None
-        self.transformer_fusion = None
-        self.final_fusion = None
-        self.layers_initialized = False
-        
-        # Enhanced prediction heads
-        self.content_similarity_head = nn.Sequential(
-            nn.Linear(64, 32),
-            nn.GELU(),
-            nn.Linear(32, 1),
-            nn.Sigmoid()
-        )
-        
-        self.genre_prediction_head = nn.Sequential(
-            nn.Linear(64, 32),
-            nn.GELU(),
-            nn.Linear(32, 20),  # 20 major genres
-            nn.Sigmoid()
-        )
-        
-        self.rating_prediction_head = nn.Sequential(
-            nn.Linear(256, 128),
-            nn.GELU(),
-            nn.Linear(128, 1),
-            nn.Sigmoid()
-        )
+        print(f"🔧 Initializing focused fusion layer with input dimension: {fused_input_dim}")
 
-    def _initialize_fusion_layers(self, cde_features, transformer_features):
-        """Initialize enhanced fusion layers for TMDb integration"""
-        if self.layers_initialized:
-            return
-            
-        cde_dim = cde_features.shape[-1]
-        transformer_dim = transformer_features.shape[-1]
-        device = cde_features.device
-        
-        print(f"🔧 Initializing TMDb-enhanced fusion layers:")
-        print(f"   CDE features: {cde_dim} dims")
-        print(f"   Transformer features: {transformer_dim} dims")
-        print(f"   TMDb features: {self.tmdb_feature_dim} dims")
-        print(f"   Content embeddings: {self.content_embedding_dim} dims")
-        
-        # Enhanced processors for richer TMDb data
-        self.cde_fusion = nn.Sequential(
-            nn.Linear(cde_dim, 256),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, 128),
-            nn.GELU(),
-            nn.Linear(128, 64)
-        ).to(device)
-        
-        self.transformer_fusion = nn.Sequential(
-            nn.Linear(transformer_dim, 256),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, 128),
-            nn.GELU(),
-            nn.Linear(128, 64)
-        ).to(device)
-        
-        # Move TMDb processors to device
-        self.tmdb_processor = self.tmdb_processor.to(device)
-        self.content_embedding_processor = self.content_embedding_processor.to(device)
-        self.content_similarity_head = self.content_similarity_head.to(device)
-        self.genre_prediction_head = self.genre_prediction_head.to(device)
-        self.rating_prediction_head = self.rating_prediction_head.to(device)
-        
-        # Enhanced final fusion: 64 * 4 = 256
         self.final_fusion = nn.Sequential(
-            nn.Linear(256, 512),
+            nn.Linear(fused_input_dim, 512),
             nn.GELU(),
-            nn.Dropout(0.1),
+            nn.Dropout(0.5), # Regularization for the fusion layer
             nn.Linear(512, 256),
             nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, self.output_dim),
-            nn.Sigmoid()
-        ).to(device)
-        
-        self.layers_initialized = True
-        print("✅ TMDb-enhanced fusion layers initialized")
+            nn.Dropout(0.4), # More regularization
+            nn.Linear(256, self.output_dim)
+            # REMOVED: Sigmoid is removed. We'll use BCEWithLogitsLoss in the trainer,
+            # which is more numerically stable and expects raw logits.
+        )
 
-    def forward(self, interaction_data, tmdb_features=None, content_embeddings=None, **kwargs):
-        """Enhanced forward pass with comprehensive TMDb integration"""
-        interaction_path = interaction_data.get('sequence')
-        timestamps = interaction_data.get('timestamps')
+        # --- MODIFICATION: Define Dropout layers for regularization ---
+        # As per previous discussions and best practices [3].
+        print("   Adding Dropout layers (p=0.4) for regularization.")
+        self.cde_dropout = nn.Dropout(p=0.4)
+        self.transformer_dropout = nn.Dropout(p=0.4)
+
+    def forward(self, data: dict):
+        """
+        --- MODIFICATION: Simplified forward pass ---
+        Accepts a simple dictionary from our new SyntheticFireTVDataset.
+        """
+        # The input 'features' tensor is expected to have a shape like (batch_size, num_features)
+        behavioral_features = data['features']
         
-        # Core model processing
-        cde_output = self.neural_cde(interaction_path, timestamps)
+        # To use with CDE/Transformer, we need a sequence dimension. We unsqueeze to add it.
+        # Shape becomes (batch_size, 1, num_features) - a sequence of length 1.
+        if behavioral_features.dim() == 2:
+            behavioral_features = behavioral_features.unsqueeze(1)
+
+        # We need a dummy timestamps tensor for the CDE.
+        timestamps = torch.zeros(behavioral_features.shape[0], behavioral_features.shape[1], device=behavioral_features.device)
+        
+        # --- Core model processing ---
+        cde_output = self.neural_cde(behavioral_features, timestamps)
         cde_features = cde_output[0] if isinstance(cde_output, tuple) else cde_output
         
-        transformer_output = self.behavioral_transformer(interaction_path)
-        transformer_features = transformer_output[0] if isinstance(transformer_output, tuple) else transformer_output
+        transformer_output, _ = self.behavioral_transformer(behavioral_features)
         
-        # Initialize fusion layers
-        self._initialize_fusion_layers(cde_features, transformer_features)
+        # --- Apply Dropout Regularization ---
+        cde_features = self.cde_dropout(cde_features)
+        transformer_features = self.transformer_dropout(transformer_output)
         
-        # Process core features
-        processed_cde = self.cde_fusion(cde_features)
-        processed_transformer = self.transformer_fusion(transformer_features)
+        # Squeeze out the sequence dimension if it's 1
+        if cde_features.dim() == 3 and cde_features.shape[1] == 1:
+            cde_features = cde_features.squeeze(1)
+        if transformer_features.dim() == 3 and transformer_features.shape[1] == 1:
+            transformer_features = transformer_features.squeeze(1)
+
+        # --- Combine the core features ---
+        combined_features = torch.cat([cde_features, transformer_features], dim=-1)
         
-        # Process TMDb features
-        if tmdb_features is not None and tmdb_features.shape[0] == cde_features.shape[0]:
-            processed_tmdb = self.tmdb_processor(tmdb_features)
-        else:
-            processed_tmdb = torch.zeros(cde_features.shape[0], 64, device=cde_features.device)
+        # --- Generate final prediction ---
+        predicted_traits = self.final_fusion(combined_features)
         
-        # Process content embeddings
-        if content_embeddings is not None and content_embeddings.shape[0] == cde_features.shape[0]:
-            processed_content = self.content_embedding_processor(content_embeddings)
-        else:
-            processed_content = torch.zeros(cde_features.shape[0], 64, device=cde_features.device)
-        
-        # Combine all features
-        combined_features = torch.cat([
-            processed_cde, 
-            processed_transformer, 
-            processed_tmdb, 
-            processed_content
-        ], dim=-1)
-        
-        # Generate comprehensive outputs
-        final_traits = self.final_fusion(combined_features)
-        content_affinity = self.content_similarity_head(processed_content)
-        genre_preferences = self.genre_prediction_head(processed_tmdb)
-        rating_prediction = self.rating_prediction_head(combined_features)
-        
+        # Return a dictionary that matches what the trainer expects for loss calculation
         return {
-            'psychological_traits': final_traits,
-            'content_affinity_scores': content_affinity,
-            'genre_preferences': genre_preferences,
-            'predicted_rating': rating_prediction,
-            'cde_traits': processed_cde,
-            'transformer_traits': processed_transformer,
-            'tmdb_traits': processed_tmdb,
-            'content_traits': processed_content
+            'psychological_traits': predicted_traits
         }
