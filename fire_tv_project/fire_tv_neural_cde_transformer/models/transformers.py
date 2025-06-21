@@ -34,30 +34,52 @@ class BehavioralSequenceTransformer(nn.Module):
         
     def forward(self, x):
         """
-        FIXED: Properly handles 2D input by adding a sequence dimension.
-        Input: (batch_size, feature_dim)
+        ROBUST: Handles various input shapes from the hybrid model
+        Input: Can be (batch_size, feature_dim) or (batch_size, seq_len, feature_dim)
         Output: (hidden_state, attention_weights)
         """
-        batch_size, feature_dim = x.shape
+        # Debug: Print actual shape for troubleshooting
+        print(f"🔍 Transformer received input shape: {x.shape}")
         
-        # --- FIX: Add sequence dimension ---
-        # Transform (batch, features) -> (batch, 1, features) to create a sequence
-        x = x.unsqueeze(1)  # Now shape is (batch_size, 1, feature_dim)
+        # Handle different input shapes
+        if len(x.shape) == 2:
+            # Case: (batch_size, feature_dim) - your expected case
+            batch_size, feature_dim = x.shape
+            # Add sequence dimension: (batch, features) -> (batch, 1, features)
+            x = x.unsqueeze(1)  # Shape: (batch_size, 1, feature_dim)
+            
+        elif len(x.shape) == 3:
+            # Case: (batch_size, seq_len, feature_dim) - from Neural CDE
+            batch_size, seq_len, feature_dim = x.shape
+            # Already has sequence dimension, use as-is
+            
+        else:
+            raise ValueError(f"Unexpected input shape: {x.shape}. Expected 2D or 3D tensor.")
+        
+        # Ensure feature_dim matches what we expect
+        if x.shape[-1] != self.feature_dim:
+            raise ValueError(f"Feature dimension mismatch: expected {self.feature_dim}, got {x.shape[-1]}")
         
         # Project to d_model
-        x = self.input_projection(x)  # Shape: (batch_size, 1, d_model)
+        x = self.input_projection(x)  # Shape: (batch_size, seq_len, d_model)
         
         # Add positional encoding
         x = self.pos_encoder(x)
         
         # Apply transformer (with batch_first=True, it expects (batch, seq, feature))
-        transformer_output = self.transformer(x)  # Shape: (batch_size, 1, d_model)
+        transformer_output = self.transformer(x)  # Shape: (batch_size, seq_len, d_model)
         
-        # Remove the sequence dimension and apply output projection
-        hidden_state = self.output_projection(transformer_output.squeeze(1))  # Shape: (batch_size, d_model)
+        # Global average pooling over sequence dimension to get fixed-size output
+        hidden_state = transformer_output.mean(dim=1)  # Shape: (batch_size, d_model)
         
-        # Return hidden state and None for attention (since we're not extracting attention weights)
+        # Apply output projection
+        hidden_state = self.output_projection(hidden_state)  # Shape: (batch_size, d_model)
+        
+        print(f"✅ Transformer output shape: {hidden_state.shape}")
+        
+        # Return hidden state and None for attention weights
         return hidden_state, None
+
 
 class PositionalEncoding(nn.Module):
     """Standard positional encoding for transformer"""
