@@ -1,0 +1,693 @@
+
+# training/enhanced_trainer_new.py
+import os
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.amp import autocast, GradScaler
+from typing import Dict, List, Optional
+import numpy as np
+from tqdm import tqdm
+import wandb
+import time
+import gc
+
+from data.dummy_tmdb_integration import DummyTMDbIntegration
+
+class EnhancedHybridModelTrainer:
+    """
+    Enhanced trainer with genre balancing, mixed precision, TMDb timing analysis, and optimized loss weighting
+    """
+    
+    def __init__(self, model, config, device, tmdb_integration, content_mapping, use_cache=None):
+        self.model = model
+        self.config = config
+        self.device = device
+        self.tmdb_integration = tmdb_integration
+        self.content_mapping = content_mapping
+        
+        # Use cache setting from config if not explicitly provided
+        if use_cache is None:
+            use_cache = getattr(config, 'use_tmdb_cache', False)
+        
+        # Optimizer with config settings
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), 
+            lr=getattr(config, 'learning_rate', 2e-4),
+            weight_decay=getattr(config, 'weight_decay', 1e-5)
+        )
+        
+        # Basic loss functions
+        self.primary_criterion = nn.MSELoss()  # For psychological traits
+        self.rating_criterion = nn.MSELoss()   # For rating prediction
+        
+        # Use loss weights from config
+        if hasattr(config, 'loss_weights') and config.loss_weights:
+            self.loss_weights = config.loss_weights
+        else:
+            # Fallback to default weights
+            self.loss_weights = {
+                'traits': 1.0,
+                'affinity': 0.2,
+                'rating': 0.1,
+                'genre': 0.3
+            }
+        
+        # GENRE BALANCING IMPLEMENTATION
+        if getattr(config, 'enable_genre_balancing', True):
+            print("🎭 Implementing advanced genre balancing...")
+            self._setup_genre_balancing()
+        else:
+            self.content_criterion = nn.BCEWithLogitsLoss()
+            print("⚠️ Genre balancing disabled")
+        
+        # MIXED PRECISION TRAINING
+        if getattr(config, 'use_mixed_precision', True):
+            self.scaler = GradScaler()
+            self.use_mixed_precision = True
+            print("⚡ Mixed precision training enabled")
+        else:
+            self.scaler = None
+            self.use_mixed_precision = False
+            print("⚡ Mixed precision training disabled")
+        
+        print(f"📊 Loss weights configured: {self.loss_weights}")
+        
+        # GRADIENT ACCUMULATION
+        self.accumulation_steps = getattr(config, 'gradient_accumulation_steps', 2)
+        batch_size = getattr(config, 'batch_size', 32)
+        effective_batch_size = batch_size * self.accumulation_steps
+        print(f"🔄 Gradient accumulation: {self.accumulation_steps} steps (effective batch size: {effective_batch_size})")
+        
+        # EARLY STOPPING
+        self.best_loss = float('inf')
+        self.patience_counter = 0
+        self.patience = getattr(config, 'patience', 3)
+        
+        # TRAINING HISTORY
+        self.training_history = {
+            'train_loss': [],
+            'val_loss': [],
+            'traits_loss': [],
+            'genre_loss': [],
+            'rating_loss': [],
+            'api_timing': [],
+            'gpu_timing': []
+        }
+        
+        # LEARNING RATE SCHEDULER
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='min', factor=0.5, patience=2
+        )
+        
+        # TMDb caching setup
+        if use_cache and hasattr(config, 'tmdb_cache_dir'):
+            features_path = os.path.join(config.tmdb_cache_dir, 'tmdb_features_cache.pkl')
+            embeddings_path = os.path.join(config.tmdb_cache_dir, 'content_embeddings_cache.pkl')
+            
+            if os.path.exists(features_path) and os.path.exists(embeddings_path):
+                print("🚀 Using cached TMDb features for faster training!")
+                from data.cached_tmdb_integration import CachedTMDbIntegration
+                self.cached_tmdb = CachedTMDbIntegration(features_path, embeddings_path)
+                self.use_tmdb_cache = True
+            else:
+                print("⚠️ TMDb cache not found, using live API calls")
+                self.cached_tmdb = None
+                self.use_tmdb_cache = False
+        else:
+            self.cached_tmdb = None
+            self.use_tmdb_cache = False
+	
+	# TMDb Dummy Data
+        self.use_dummy_tmdb = getattr(config, 'use_dummy_tmdb', False)
+        
+        if self.use_dummy_tmdb:
+            print("🚀 Using DUMMY TMDb integration for maximum speed!")
+            self.dummy_tmdb = DummyTMDbIntegration(device)
+            self.use_tmdb_cache = False  # Override cache setting
+        else:
+            self.dummy_tmdb = None
+
+        
+        # TIMING ANALYSIS SETUP
+        self.enable_timing_analysis = getattr(config, 'enable_tmdb_timing_test', True)
+        self.timing_stats = {
+            'api_times': [],
+            'gpu_times': [],
+            'total_times': []
+        }
+        
+    def _setup_genre_balancing(self):
+        """Setup balanced genre classification with pos_weight"""
+        # Genre frequencies based on typical movie distributions
+        genre_frequencies = {
+            'Action': 300, 'Adventure': 200, 'Animation': 50, 'Comedy': 400, 'Crime': 150,
+            'Documentary': 30, 'Drama': 800, 'Family': 100, 'Fantasy': 120, 'History': 40,
+            'Horror': 180, 'Music': 25, 'Mystery': 80, 'Romance': 250, 'Science Fiction': 160,
+            'TV Movie': 20, 'Thriller': 300, 'War': 60, 'Western': 15, 'Biography': 35
+        }
+        
+        total_samples = sum(genre_frequencies.values())
+        weights = []
+        
+        genre_list = [
+            'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Documentary',
+            'Drama', 'Family', 'Fantasy', 'History', 'Horror', 'Music',
+            'Mystery', 'Romance', 'Science Fiction', 'TV Movie', 'Thriller',
+            'War', 'Western', 'Biography'
+        ]
+        
+        for genre in genre_list:
+            freq = genre_frequencies.get(genre, 50)
+            # Calculate pos_weight as neg_samples / pos_samples
+            neg_count = total_samples - freq
+            pos_weight = neg_count / (freq + 1e-5)  # Add epsilon to avoid division by zero
+            weights.append(pos_weight)
+        
+        pos_weight_tensor = torch.tensor(weights, dtype=torch.float32).to(self.device)
+        self.content_criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
+        
+        print(f"✅ Genre balancing enabled with pos_weights")
+        print(f"   Drama weight: {pos_weight_tensor[6]:.3f} (most common)")
+        print(f"   Western weight: {pos_weight_tensor[18]:.3f} (least common)")
+        print(f"   Average weight: {pos_weight_tensor.mean():.3f}")
+    
+    def _extract_tmdb_targets(self, content_ids: List[str]) -> Dict[str, torch.Tensor]:
+        """Extract TMDb targets for rating and genre prediction"""
+        # Fetch TMDb data for the batch
+        if self.use_tmdb_cache:
+            tmdb_data = self.cached_tmdb.fetch_tmdb_data(content_ids, self.content_mapping)
+        else:
+            tmdb_data = self.tmdb_integration.fetch_tmdb_data(content_ids, self.content_mapping)
+        
+        # Extract rating targets
+        rating_targets = self._extract_rating_targets(tmdb_data)
+        
+        # Extract genre targets
+        genre_targets = self._extract_genre_targets(tmdb_data)
+        
+        return {
+            'rating_targets': rating_targets.to(self.device),
+            'genre_targets': genre_targets.to(self.device)
+        }
+    
+    def _extract_rating_targets(self, tmdb_data: Dict) -> torch.Tensor:
+        """Extract rating targets from TMDb data"""
+        ratings = []
+        for content_id, data in tmdb_data.items():
+            # Get rating from TMDb data
+            raw_rating = data.get('rating', data.get('vote_average', 5.0))
+            if raw_rating is None or raw_rating == 0:
+                raw_rating = 5.0  # Default neutral rating
+            
+            # Normalize to 0-1 range
+            normalized_rating = float(raw_rating) / 10.0
+            ratings.append(normalized_rating)
+        
+        return torch.tensor(ratings, dtype=torch.float32)
+    
+    def _extract_genre_targets(self, tmdb_data: Dict) -> torch.Tensor:
+        """Extract genre targets with improved handling"""
+        genre_list = [
+            'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Documentary',
+            'Drama', 'Family', 'Fantasy', 'History', 'Horror', 'Music',
+            'Mystery', 'Romance', 'Science Fiction', 'TV Movie', 'Thriller',
+            'War', 'Western', 'Biography'
+        ]
+        
+        genre_targets = []
+        for content_id, data in tmdb_data.items():
+            content_genres = data.get('genres', [])
+            
+            # Handle missing or unknown genres
+            if not content_genres or content_genres == ['Unknown']:
+                content_genres = ['Drama']  # Default to Drama
+            
+            # Create binary vector
+            genre_vector = [1.0 if genre in content_genres else 0.0 for genre in genre_list]
+            
+            # Ensure at least one genre is active
+            if sum(genre_vector) == 0:
+                genre_vector[6] = 1.0  # Set Drama as default (index 6)
+            
+            genre_targets.append(genre_vector)
+        
+        return torch.tensor(genre_targets, dtype=torch.float32)
+    
+    def print_gpu_memory(self, prefix=""):
+        """Print current GPU memory usage"""
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            cached = torch.cuda.memory_cached() / 1024**3
+            print(f"{prefix}GPU Memory - Allocated: {allocated:.2f}GB, Cached: {cached:.2f}GB")
+    
+    def train_epoch(self, train_loader):
+        """Enhanced training epoch with mixed precision, gradient accumulation, and timing analysis"""
+        self.model.train()
+        running_losses = {
+            'total': 0.0,
+            'traits': 0.0,
+            'rating': 0.0,
+            'genre': 0.0,
+            'affinity': 0.0
+        }
+        
+        # Progress bar
+        pbar = tqdm(train_loader, desc="Training")
+        
+        # Zero gradients at start
+        self.optimizer.zero_grad()
+        
+        for batch_idx, (features, labels) in enumerate(pbar):
+            batch_start_time = time.time()
+            
+            features = features.to(self.device)
+            labels = labels.to(self.device)
+            
+            # Create interaction data with ALL features
+            interaction_data = {
+                'sequence': features,
+                'timestamps': torch.arange(features.shape[1], device=self.device).float().unsqueeze(0).repeat(features.shape[0], 1)
+            }
+            
+            # Extract content IDs for TMDb integration
+            content_ids = [f"content_{i}" for i in range(features.shape[0])]
+            
+            # MEASURE TMDB API LATENCY
+            api_start_time = time.time()
+            
+            # CHOOSE INTEGRATION METHOD
+            if self.use_dummy_tmdb:
+                # FASTEST: Use dummy integration (no API calls)
+                tmdb_features = self.dummy_tmdb.create_tmdb_features(content_ids)
+                content_embeddings = self.dummy_tmdb.create_content_embeddings(content_ids)
+                tmdb_data = self.dummy_tmdb.fetch_tmdb_data(content_ids, self.content_mapping)
+            elif self.use_tmdb_cache:
+                # FAST: Get pre-computed features from cache
+                tmdb_features = self.cached_tmdb.create_tmdb_features(content_ids)
+                content_embeddings = self.cached_tmdb.create_content_embeddings(content_ids)
+                tmdb_data = self.cached_tmdb.fetch_tmdb_data(content_ids, self.content_mapping)
+            else:
+                # SLOW: Compute features on-the-fly (original method)
+                tmdb_data = self.tmdb_integration.fetch_tmdb_data(content_ids, self.content_mapping)
+                tmdb_features = self.tmdb_integration.create_tmdb_features(tmdb_data)
+                content_embeddings = self.tmdb_integration.create_content_embeddings(tmdb_data)
+            
+            api_latency = time.time() - api_start_time
+            
+            # Move to device
+            tmdb_features = tmdb_features.to(self.device)
+            content_embeddings = content_embeddings.to(self.device)
+            
+            # Extract targets
+            targets = self._extract_tmdb_targets(content_ids)
+            rating_targets = targets['rating_targets']
+            genre_targets = targets['genre_targets']
+            
+            # MEASURE GPU COMPUTATION TIME
+            gpu_start_time = time.time()
+            
+            # MIXED PRECISION FORWARD PASS
+            if self.use_mixed_precision:
+                with autocast(device_type='cuda', dtype=torch.float16):
+                    outputs = self.model(
+                        interaction_data,
+                        tmdb_features=tmdb_features,
+                        content_embeddings=content_embeddings
+                    )
+                    
+                    # Calculate individual losses
+                    primary_loss = self.primary_criterion(
+                        outputs['psychological_traits'], 
+                        labels
+                    )
+                    
+                    content_affinity_loss = torch.mean(
+                        outputs['content_affinity_scores']
+                    )
+                    
+                    rating_prediction_loss = self.rating_criterion(
+                        outputs['predicted_rating'].squeeze(), 
+                        rating_targets
+                    )
+                    
+                    genre_prediction_loss = self.content_criterion(
+                        outputs['genre_preferences'], 
+                        genre_targets
+                    )
+                    
+                    # WEIGHTED TOTAL LOSS
+                    total_loss_value = (
+                        primary_loss * self.loss_weights['traits'] +
+                        content_affinity_loss * self.loss_weights['affinity'] +
+                        rating_prediction_loss * self.loss_weights['rating'] +
+                        genre_prediction_loss * self.loss_weights['genre']
+                    )
+                    
+                    # Scale loss for gradient accumulation
+                    scaled_loss = total_loss_value / self.accumulation_steps
+                
+                # MIXED PRECISION BACKWARD PASS
+                self.scaler.scale(scaled_loss).backward()
+                
+                # GRADIENT ACCUMULATION
+                if (batch_idx + 1) % self.accumulation_steps == 0:
+                    # Gradient clipping
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                    
+                    # Optimizer step
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad()
+            else:
+                # STANDARD PRECISION TRAINING
+                outputs = self.model(
+                    interaction_data,
+                    tmdb_features=tmdb_features,
+                    content_embeddings=content_embeddings
+                )
+                
+                # Calculate losses
+                primary_loss = self.primary_criterion(outputs['psychological_traits'], labels)
+                content_affinity_loss = torch.mean(outputs['content_affinity_scores'])
+                rating_prediction_loss = self.rating_criterion(outputs['predicted_rating'].squeeze(), rating_targets)
+                genre_prediction_loss = self.content_criterion(outputs['genre_preferences'], genre_targets)
+                
+                total_loss_value = (
+                    primary_loss * self.loss_weights['traits'] +
+                    content_affinity_loss * self.loss_weights['affinity'] +
+                    rating_prediction_loss * self.loss_weights['rating'] +
+                    genre_prediction_loss * self.loss_weights['genre']
+                )
+                
+                scaled_loss = total_loss_value / self.accumulation_steps
+                scaled_loss.backward()
+                
+                if (batch_idx + 1) % self.accumulation_steps == 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+            
+            gpu_compute_time = time.time() - gpu_start_time
+            batch_total_time = time.time() - batch_start_time
+            
+            # Store timing statistics
+            self.timing_stats['api_times'].append(api_latency)
+            self.timing_stats['gpu_times'].append(gpu_compute_time)
+            self.timing_stats['total_times'].append(batch_total_time)
+            
+            # Update running losses
+            running_losses['total'] += total_loss_value.item()
+            running_losses['traits'] += primary_loss.item()
+            running_losses['rating'] += rating_prediction_loss.item()
+            running_losses['genre'] += genre_prediction_loss.item()
+            running_losses['affinity'] += content_affinity_loss.item()
+            
+            # Update progress bar with higher precision
+            pbar.set_postfix({
+                'Total': f"{total_loss_value.item():.6f}",
+                'Traits': f"{primary_loss.item():.6f}",
+                'Rating': f"{rating_prediction_loss.item():.6f}",
+                'Genre': f"{genre_prediction_loss.item():.6f}"
+            })
+            
+            # DETAILED LOGGING WITH TIMING ANALYSIS
+            if batch_idx % 100 == 0:
+                api_percentage = (api_latency / batch_total_time) * 100
+                gpu_percentage = (gpu_compute_time / batch_total_time) * 100
+                
+                print(f"\n🔍 Detailed Analysis (Batch {batch_idx}):")
+                print(f"  📊 Loss Breakdown:")
+                print(f"    Traits Loss: {primary_loss.item():.8f}")
+                print(f"    Rating Loss: {rating_prediction_loss.item():.8f}")
+                print(f"    Genre Loss: {genre_prediction_loss.item():.8f}")
+                print(f"    Total Loss: {total_loss_value.item():.8f}")
+                
+                print(f"  ⏱️ Timing Breakdown:")
+                print(f"    TMDb API Time: {api_latency:.4f}s ({api_percentage:.1f}% of total)")
+                print(f"    GPU Compute Time: {gpu_compute_time:.4f}s ({gpu_percentage:.1f}% of total)")
+                print(f"    Total Batch Time: {batch_total_time:.4f}s")
+                
+                # GPU memory monitoring
+                self.print_gpu_memory("    ")
+                
+                # Slow API warning
+                if api_latency > 0.1:  # If API takes more than 100ms
+                    print(f"    ⚠️ Slow TMDb API detected: {api_latency:.3f}s")
+                
+                # Memory cleanup every 100 batches
+                if batch_idx > 0:
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+        
+        # Calculate average losses
+        num_batches = len(train_loader)
+        avg_losses = {k: v / num_batches for k, v in running_losses.items()}
+        
+        # Calculate timing statistics
+        avg_api_time = np.mean(self.timing_stats['api_times'][-num_batches:])
+        avg_gpu_time = np.mean(self.timing_stats['gpu_times'][-num_batches:])
+        avg_total_time = np.mean(self.timing_stats['total_times'][-num_batches:])
+        
+        print(f"\n📈 Epoch Timing Summary:")
+        print(f"   Average API Time: {avg_api_time:.4f}s ({(avg_api_time/avg_total_time)*100:.1f}%)")
+        print(f"   Average GPU Time: {avg_gpu_time:.4f}s ({(avg_gpu_time/avg_total_time)*100:.1f}%)")
+        print(f"   Average Total Time: {avg_total_time:.4f}s")
+        
+        # Store in history
+        self.training_history['train_loss'].append(avg_losses['total'])
+        self.training_history['traits_loss'].append(avg_losses['traits'])
+        self.training_history['genre_loss'].append(avg_losses['genre'])
+        self.training_history['rating_loss'].append(avg_losses['rating'])
+        self.training_history['api_timing'].append(avg_api_time)
+        self.training_history['gpu_timing'].append(avg_gpu_time)
+        
+        return avg_losses
+    
+    def validate_epoch(self, val_loader):
+        """Validation epoch with same loss calculations and timing"""
+        self.model.eval()
+        running_losses = {
+            'total': 0.0,
+            'traits': 0.0,
+            'rating': 0.0,
+            'genre': 0.0,
+            'affinity': 0.0
+        }
+        
+        val_api_times = []
+
+        pbar = tqdm(val_loader, desc="Validating")
+        
+        with torch.no_grad():
+            for features, labels in val_loader:
+                features = features.to(self.device)
+                labels = labels.to(self.device)
+                
+                interaction_data = {
+                    'sequence': features,
+                    'timestamps': torch.arange(features.shape[1], device=self.device).float().unsqueeze(0).repeat(features.shape[0], 1)
+                }
+                
+                content_ids = [f"content_{i}" for i in range(features.shape[0])]
+                
+                # Measure validation API time
+                api_start = time.time()
+
+                if self.use_dummy_tmdb:
+                    # FASTEST: Use dummy integration (no API calls)
+                    tmdb_features = self.dummy_tmdb.create_tmdb_features(content_ids)
+                    content_embeddings = self.dummy_tmdb.create_content_embeddings(content_ids)
+                    # Fetch dummy tmdb_data for _extract_tmdb_targets compatibility
+                    tmdb_data = self.dummy_tmdb.fetch_tmdb_data(content_ids, self.content_mapping) 
+                elif self.use_tmdb_cache:
+                    # FAST: Get pre-computed features from cache
+                    tmdb_features = self.cached_tmdb.create_tmdb_features(content_ids)
+                    content_embeddings = self.cached_tmdb.create_content_embeddings(content_ids)
+                    tmdb_data = self.cached_tmdb.fetch_tmdb_data(content_ids, self.content_mapping)
+                else:
+                    # SLOW: Compute features on-the-fly (original API method)
+                    tmdb_data = self.tmdb_integration.fetch_tmdb_data(content_ids, self.content_mapping)
+                    tmdb_features = self.tmdb_integration.create_tmdb_features(tmdb_data)
+                    content_embeddings = self.tmdb_integration.create_content_embeddings(tmdb_data)
+                # --- END OF CORRECTED TMDb INTEGRATION BLOCK ---
+
+                tmdb_features = tmdb_features.to(self.device)
+                content_embeddings = content_embeddings.to(self.device)
+
+                val_api_times.append(time.time() - api_start) # This line was correct
+
+                # This next part is also crucial: _extract_tmdb_targets uses the tmdb_data dictionary.
+                # Make sure tmdb_data is correctly assigned based on the chosen path above.
+                # The corrected block ensures tmdb_data is always defined.
+                targets = self._extract_tmdb_targets(content_ids) 
+                rating_targets = targets['rating_targets']
+                genre_targets = targets['genre_targets']
+                
+                # Forward pass
+                outputs = self.model(
+                    interaction_data,
+                    tmdb_features=tmdb_features,
+                    content_embeddings=content_embeddings
+                )
+                
+                # Calculate losses
+                primary_loss = self.primary_criterion(outputs['psychological_traits'], labels)
+                content_affinity_loss = torch.mean(outputs['content_affinity_scores'])
+                rating_prediction_loss = self.rating_criterion(outputs['predicted_rating'].squeeze(), rating_targets)
+                genre_prediction_loss = self.content_criterion(outputs['genre_preferences'], genre_targets)
+                
+                total_loss_value = (
+                    primary_loss * self.loss_weights['traits'] +
+                    content_affinity_loss * self.loss_weights['affinity'] +
+                    rating_prediction_loss * self.loss_weights['rating'] +
+                    genre_prediction_loss * self.loss_weights['genre']
+                )
+                
+                # Update running losses
+                running_losses['total'] += total_loss_value.item()
+                running_losses['traits'] += primary_loss.item()
+                running_losses['rating'] += rating_prediction_loss.item()
+                running_losses['genre'] += genre_prediction_loss.item()
+                running_losses['affinity'] += content_affinity_loss.item()
+        
+        # Calculate average losses
+        num_batches = len(val_loader)
+        avg_losses = {k: v / num_batches for k, v in running_losses.items()}
+        
+        # Validation timing summary
+        avg_val_api_time = np.mean(val_api_times)
+        print(f"📊 Validation API Time: {avg_val_api_time:.4f}s average")
+        
+        # Store in history
+        self.training_history['val_loss'].append(avg_losses['total'])
+        
+        return avg_losses
+    
+    def train(self, train_loader, val_loader, num_epochs):
+        """Main training loop with early stopping, checkpointing, and comprehensive timing analysis"""
+        print(f"🚀 Starting enhanced training for {num_epochs} epochs...")
+        print(f"🔧 Configuration:")
+        print(f"   Mixed Precision: {self.use_mixed_precision}")
+        print(f"   TMDb Cache: {self.use_tmdb_cache}")
+        print(f"   Gradient Accumulation: {self.accumulation_steps}")
+        print(f"   Loss Weights: {self.loss_weights}")
+        
+        for epoch in range(num_epochs):
+            print(f"\n{'='*60}")
+            print(f"Epoch {epoch+1}/{num_epochs}")
+            print(f"{'='*60}")
+            
+            # Training
+            train_losses = self.train_epoch(train_loader)
+            
+            # Validation
+            val_losses = self.validate_epoch(val_loader)
+            
+            # Print epoch summary
+            print(f"\n📊 Epoch {epoch+1} Summary:")
+            print(f"   Train - Total: {train_losses['total']:.6f}, Traits: {train_losses['traits']:.6f}, Genre: {train_losses['genre']:.6f}")
+            print(f"   Val   - Total: {val_losses['total']:.6f}, Traits: {val_losses['traits']:.6f}, Genre: {val_losses['genre']:.6f}")
+            
+            # Learning rate scheduling
+            self.scheduler.step(val_losses['total'])
+            current_lr = self.optimizer.param_groups[0]['lr']
+            print(f"   Learning Rate: {current_lr:.2e}")
+            
+            # Enhanced checkpoint saving
+            checkpoint = {
+                'epoch': epoch + 1,
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'scheduler_state_dict': self.scheduler.state_dict(),
+                'best_loss': self.best_loss,
+                'val_loss': val_losses['total'],
+                'training_history': self.training_history,
+                'timing_stats': self.timing_stats,
+                'config': {
+                    'batch_size': getattr(self.config, 'batch_size', 4),
+                    'learning_rate': getattr(self.config, 'learning_rate', 2e-4),
+                    'accumulation_steps': self.accumulation_steps,
+                    'loss_weights': self.loss_weights,
+                    'use_mixed_precision': self.use_mixed_precision,
+                    'use_tmdb_cache': self.use_tmdb_cache
+                }
+            }
+            
+            if self.use_mixed_precision and self.scaler:
+                checkpoint['scaler_state_dict'] = self.scaler.state_dict()
+            
+            # Save regular checkpoint
+            torch.save(checkpoint, f"checkpoint_epoch_{epoch+1}.pth")
+            
+            # Early stopping logic
+            if val_losses['total'] < self.best_loss:
+                self.best_loss = val_losses['total']
+                self.patience_counter = 0
+                torch.save(checkpoint, "best_tmdb_enhanced_model.pth")
+                print(f"✅ New best model saved (val_loss: {val_losses['total']:.6f})")
+            else:
+                self.patience_counter += 1
+                print(f"⏳ No improvement for {self.patience_counter}/{self.patience} epochs")
+            
+            # Early stopping
+            if self.patience_counter >= self.patience:
+                print(f"🛑 Early stopping at epoch {epoch+1}")
+                break
+            
+            # Clean up old checkpoints (keep last 3)
+            if epoch > 2:
+                old_checkpoint = f"checkpoint_epoch_{epoch-2}.pth"
+                if os.path.exists(old_checkpoint):
+                    os.remove(old_checkpoint)
+        
+        # Final timing analysis
+        print(f"\n🎯 Final Training Analysis:")
+        if self.timing_stats['api_times']:
+            total_api_time = sum(self.timing_stats['api_times'])
+            total_gpu_time = sum(self.timing_stats['gpu_times'])
+            total_training_time = sum(self.timing_stats['total_times'])
+            
+            print(f"   Total API Time: {total_api_time:.2f}s ({(total_api_time/total_training_time)*100:.1f}%)")
+            print(f"   Total GPU Time: {total_gpu_time:.2f}s ({(total_gpu_time/total_training_time)*100:.1f}%)")
+            print(f"   Total Training Time: {total_training_time:.2f}s")
+            
+            if total_api_time > total_gpu_time:
+                print(f"   ⚠️ API bottleneck detected! Consider implementing TMDb caching.")
+            else:
+                print(f"   ✅ GPU-bound training - optimal performance.")
+        
+        print("✅ Training complete!")
+        return self.training_history
+    
+    def load_checkpoint(self, checkpoint_path):
+        """Load comprehensive checkpoint with timing data"""
+        if os.path.exists(checkpoint_path):
+            print(f"🔄 Loading checkpoint from {checkpoint_path}")
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            
+            # Load model and optimizer states
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            
+            # Load additional states if available
+            if 'scheduler_state_dict' in checkpoint:
+                self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            
+            if 'scaler_state_dict' in checkpoint and self.scaler:
+                self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
+            
+            # Load training state
+            self.best_loss = checkpoint.get('best_loss', float('inf'))
+            self.training_history = checkpoint.get('training_history', self.training_history)
+            self.timing_stats = checkpoint.get('timing_stats', self.timing_stats)
+            
+            start_epoch = checkpoint.get('epoch', 0)
+            print(f"✅ Resumed from epoch {start_epoch} with best loss {self.best_loss:.6f}")
+            
+            return start_epoch
+        else:
+            print(f"❌ Checkpoint {checkpoint_path} not found")
+            return 0

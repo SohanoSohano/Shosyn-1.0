@@ -1,0 +1,35 @@
+# Ignore everything in home directory except fire_tv_project/
+.*
+!.gitignore
+
+# Optional: prevent caching directories like pip or config
+.cache/
+.config/
+.local/
+.ssh/
+.aws/
+.triton/
+.vscode/
+
+# Ignore shell/session history files
+.bash_history
+.lesshst
+.netrc
+.profile
+.sudo_as_admin_successful
+.bash_logout
+.bashrc
+
+# Ignore large file types
+*.zip
+*.tar.gz
+*.mp4
+*.mkv
+*.csv
+*.tsv
+*.jsonl
+*.pth
+
+# Ignore large folders
+/fire_tv_data/
+/aws/
