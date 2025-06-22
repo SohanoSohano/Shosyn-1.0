@@ -101,11 +101,17 @@ class HybridFireTVSystem(nn.Module):
         cde_output = self.neural_cde(behavioral_features, timestamps)
         cde_features = cde_output[0] if isinstance(cde_output, tuple) else cde_output
         
-        transformer_output, _ = self.behavioral_transformer(behavioral_features)
+        # --- FIX: Ensure transformer_features is always assigned ---
+        transformer_result = self.behavioral_transformer(behavioral_features)
+        # Handle both tuple and tensor outputs properly
+        if isinstance(transformer_result, tuple):
+            transformer_features = transformer_result[0]  # Get the main output
+        else:
+            transformer_features = transformer_result
         
         # --- Apply Dropout Regularization ---
         cde_features = self.cde_dropout(cde_features)
-        transformer_features = self.transformer_dropout(transformer_features)
+        transformer_features = self.transformer_dropout(transformer_features)  # Now this will work
         
         # Squeeze out the sequence dimension if it's 1
         if cde_features.dim() == 3:
@@ -116,7 +122,7 @@ class HybridFireTVSystem(nn.Module):
         # --- Combine the core features ---
         combined_features = torch.cat([cde_features, transformer_features], dim=-1)
         
-        # --- Generate final prediction using the enhanced final_fusion ---
+        # --- Generate final prediction ---
         predicted_traits = self.final_fusion(combined_features)
         
         return {
