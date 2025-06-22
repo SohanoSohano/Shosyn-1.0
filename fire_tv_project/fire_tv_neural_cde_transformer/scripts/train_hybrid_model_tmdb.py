@@ -6,14 +6,14 @@ import torch.nn as nn # Needed for gradient clipping
 import wandb
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
-
+from torch.optim.lr_scheduler import OneCycleLR
 
 # --- Project Path Setup ---
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# --- Imports (Unchanged) ---
+# --- Imports---
 from config.synthetic_model_config import HybridModelConfig
 from data.synthetic_data_loader import SyntheticFireTVDataset
 from models.hybrid_model import HybridFireTVSystem # Assumes you've added the ResidualBlock
@@ -41,24 +41,39 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size=training_config.batch_size, num_workers=4, pin_memory=True)
     
     model = HybridFireTVSystem(config=model_config).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=training_config.learning_rate, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=1e-4,  # This will be the max_lr for OneCycleLR
+        betas=(0.9, 0.999),
+        weight_decay=1e-3,
+        eps=1e-8
+    )
 
-    # --- STRATEGY 1: Dynamic Learning Rate ---
-    # Using CosineAnnealingLR for smooth decay. T_max is one epoch's worth of steps.
-    print("🔧 STRATEGY 1: Implementing CosineAnnealingLR scheduler.")
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=1e-7)
-
-    # --- STRATEGY 2: Pass to a modified trainer that uses these new components ---
-    # The trainer will need to be updated to accept the scheduler and use it correctly.
-    # The following is a conceptual integration.
-    
-    # --- Let's define the training loop directly here for clarity ---
     scaler = torch.cuda.amp.GradScaler()
     criterion = nn.BCEWithLogitsLoss()
     num_epochs = 50
     patience = 10 # Your increased patience
     patience_counter = 0
     best_val_loss = float('inf')
+
+    # OneCycleLR - very powerful scheduler
+    total_steps = len(train_loader) * num_epochs
+    scheduler = OneCycleLR(
+        optimizer,
+        max_lr=5e-4,  # Peak learning rate (5x base lr)
+        total_steps=total_steps,
+        pct_start=0.3,  # Warm up for 30% of training
+        anneal_strategy='cos',  # Cosine annealing
+        cycle_momentum=True,
+        base_momentum=0.85,
+        max_momentum=0.95,
+        div_factor=25.0,  # max_lr/div_factor = initial lr
+        final_div_factor=1e4  # min_lr = initial_lr/final_div_factor
+    )
+    
+    
+    # --- Let's define the training loop directly here for clarity ---
+
 
     for epoch in range(1, num_epochs + 1):
         print(f"\n--- Epoch {epoch}/{num_epochs} ---")
@@ -88,6 +103,7 @@ def main():
             
             scaler.step(optimizer)
             scaler.update()
+            optimizer.step()
             scheduler.step() # Step the scheduler every batch
             
             train_loss += loss.item()
