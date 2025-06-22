@@ -42,8 +42,8 @@ class EnhancedHybridModelTrainer:
         self.accumulation_steps = getattr(config, 'gradient_accumulation_steps', 2)
         self.best_loss = float('inf')
         self.patience_counter = 0
-        self.patience = getattr(config, 'patience', 3)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=2)
+        self.patience = getattr(config, 'patience', 10)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=10000, eta_min=1e-6)
         
         print("✅ Trainer initialized successfully.")
         
@@ -109,6 +109,7 @@ class EnhancedHybridModelTrainer:
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
                         self.optimizer.zero_grad()
+                        self.scheduler.step()
                 else:
                     loss.backward()
                     if (progress_bar.n + 1) % self.accumulation_steps == 0:

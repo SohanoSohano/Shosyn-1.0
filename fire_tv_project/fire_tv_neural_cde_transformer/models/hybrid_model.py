@@ -1,14 +1,46 @@
-# models/hybrid_model.py (Focused Version for Synthetic Data Training)
+# models/hybrid_model.py (Enhanced with Batch Norm and Residual Connections)
 import torch
 import torch.nn as nn
 from .neural_cde import LayerNormNeuralCDE
 from .transformers import BehavioralSequenceTransformer
 
+# --- NEW: Helper for Residual Block ---
+class ResidualBlock(nn.Module):
+    """
+    A basic Residual Block for a feed-forward network.
+    It includes a Linear layer, BatchNorm, GELU activation, and Dropout,
+    with a skip connection.
+    """
+    def __init__(self, input_dim: int, output_dim: int, dropout_rate: float = 0.4):
+        super().__init__()
+        self.linear = nn.Linear(input_dim, output_dim)
+        # BatchNorm1d is used because we expect (batch_size, num_features)
+        self.bn = nn.BatchNorm1d(output_dim) 
+        self.activation = nn.GELU()
+        self.dropout = nn.Dropout(dropout_rate)
+        
+        # Projection layer for the shortcut connection if input and output dimensions differ
+        self.shortcut = nn.Identity()
+        if input_dim != output_dim:
+            self.shortcut = nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        # Store the input for the skip connection
+        residual = self.shortcut(x)
+        
+        # Apply the main path transformations
+        x = self.linear(x)
+        x = self.bn(x)
+        x = self.activation(x)
+        x = self.dropout(x)
+        
+        # Add the residual connection
+        return x + residual
+
 class HybridFireTVSystem(nn.Module):
     """
-    A focused version of the Hybrid Model for training on the synthetic dataset.
-    This version concentrates on the core task: predicting psychological traits
-    from user behavior, and incorporates strong regularization.
+    A focused version of the Hybrid Model for training on the synthetic dataset,
+    now enhanced with Batch Normalization and Residual Connections in the fusion layer.
     """
     
     def __init__(self, config):
@@ -17,11 +49,9 @@ class HybridFireTVSystem(nn.Module):
         print("🔥 INITIALIZING FOCUSED HYBRID MODEL for Synthetic Training 🔥")
         
         self.config = config
-        # --- MODIFICATION: Dimensions are now simpler ---
-        self.input_dim = config.input_dim  # Expected to be 9 (behavioral features)
-        self.output_dim = config.output_dim # Expected to be 3 (psychological traits)
+        self.input_dim = config.input_dim
+        self.output_dim = config.output_dim
 
-        # --- Core components remain the same ---
         self.neural_cde = LayerNormNeuralCDE(
             input_dim=self.input_dim, 
             hidden_dim=config.neural_cde.hidden_dim,
@@ -37,53 +67,34 @@ class HybridFireTVSystem(nn.Module):
             patch_size=config.transformer.patch_size
         )
         
-        # --- REMOVED: Unnecessary Components for this training phase ---
-        # The tmdb_processor and content_embedding_processor are not needed
-        # because the synthetic data loader does not provide this data.
-        # self.tmdb_processor = ...
-        # self.content_embedding_processor = ...
-        
-        # --- MODIFICATION: A simplified fusion network ---
-        # It now fuses only the outputs of the two core components.
-        # The input dimension is calculated based on the CDE and Transformer hidden dimensions.
+        # --- Fusion Network with Residual Blocks and BatchNorm ---
         cde_output_dim = config.neural_cde.hidden_dim
         transformer_output_dim = config.transformer.d_model
         fused_input_dim = cde_output_dim + transformer_output_dim
         
         print(f"🔧 Initializing focused fusion layer with input dimension: {fused_input_dim}")
+        print("   --- ENHANCED with Residual Blocks and BatchNorm ---")
 
         self.final_fusion = nn.Sequential(
-            nn.Linear(fused_input_dim, 512),
-            nn.GELU(),
-            nn.Dropout(0.5), # Regularization for the fusion layer
-            nn.Linear(512, 256),
-            nn.GELU(),
-            nn.Dropout(0.4), # More regularization
+            # First Residual Block: Input fused_input_dim, Output 512
+            ResidualBlock(fused_input_dim, 512, dropout_rate=0.5),
+            # Second Residual Block: Input 512, Output 256
+            ResidualBlock(512, 256, dropout_rate=0.4),
+            # Final Linear layer to project to the output dimension
             nn.Linear(256, self.output_dim)
-            # REMOVED: Sigmoid is removed. We'll use BCEWithLogitsLoss in the trainer,
-            # which is more numerically stable and expects raw logits.
         )
 
-        # --- MODIFICATION: Define Dropout layers for regularization ---
-        # As per previous discussions and best practices [3].
+        # --- Define Dropout layers for initial components (Unchanged) ---
         print("   Adding Dropout layers (p=0.4) for regularization.")
         self.cde_dropout = nn.Dropout(p=0.4)
         self.transformer_dropout = nn.Dropout(p=0.4)
 
     def forward(self, data: dict):
-        """
-        --- MODIFICATION: Simplified forward pass ---
-        Accepts a simple dictionary from our new SyntheticFireTVDataset.
-        """
-        # The input 'features' tensor is expected to have a shape like (batch_size, num_features)
         behavioral_features = data['features']
         
-        # To use with CDE/Transformer, we need a sequence dimension. We unsqueeze to add it.
-        # Shape becomes (batch_size, 1, num_features) - a sequence of length 1.
         if behavioral_features.dim() == 2:
             behavioral_features = behavioral_features.unsqueeze(1)
 
-        # We need a dummy timestamps tensor for the CDE.
         timestamps = torch.zeros(behavioral_features.shape[0], behavioral_features.shape[1], device=behavioral_features.device)
         
         # --- Core model processing ---
@@ -94,21 +105,20 @@ class HybridFireTVSystem(nn.Module):
         
         # --- Apply Dropout Regularization ---
         cde_features = self.cde_dropout(cde_features)
-        transformer_features = self.transformer_dropout(transformer_output)
+        transformer_features = self.transformer_dropout(transformer_features)
         
         # Squeeze out the sequence dimension if it's 1
-        if cde_features.dim() == 3 and cde_features.shape[1] == 1:
+        if cde_features.dim() == 3:
             cde_features = cde_features.squeeze(1)
-        if transformer_features.dim() == 3 and transformer_features.shape[1] == 1:
+        if transformer_features.dim() == 3:
             transformer_features = transformer_features.squeeze(1)
 
         # --- Combine the core features ---
         combined_features = torch.cat([cde_features, transformer_features], dim=-1)
         
-        # --- Generate final prediction ---
+        # --- Generate final prediction using the enhanced final_fusion ---
         predicted_traits = self.final_fusion(combined_features)
         
-        # Return a dictionary that matches what the trainer expects for loss calculation
         return {
             'psychological_traits': predicted_traits
         }

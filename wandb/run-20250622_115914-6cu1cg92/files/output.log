@@ -1,0 +1,21 @@
+Loading synthetic dataset from: C:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\fire_tv_neural_cde_transformer_instance_version\Shosyn-1.0\fire_tv_project\fire_tv_neural_cde_transformer\fire_tv_synthetic_dataset_v3_tmdb.csv
+✅ Dataset processed and ready for training.
+   Input features shape (X): torch.Size([900327, 9])  (batch_size, num_behavioral_features)
+   Target labels shape (y):  torch.Size([900327, 3])  (batch_size, num_psychological_traits)
+🔥 INITIALIZING FOCUSED HYBRID MODEL for Synthetic Training 🔥
+🔧 Initializing focused fusion layer with input dimension: 527
+   --- ENHANCED with Residual Blocks and BatchNorm ---
+   Adding Dropout layers (p=0.4) for regularization.
+🔧 STRATEGY 1: Implementing CosineAnnealingLR scheduler.
+c:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\fire_tv_neural_cde_transformer_instance_version\Shosyn-1.0\fire_tv_project\fire_tv_neural_cde_transformer\scripts\train_hybrid_model_tmdb.py:54: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = torch.cuda.amp.GradScaler()
+
+--- Epoch 1/50 ---
+Traceback (most recent call last):
+  File "c:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\fire_tv_neural_cde_transformer_instance_version\Shosyn-1.0\fire_tv_project\fire_tv_neural_cde_transformer\scripts\train_hybrid_model_tmdb.py", line 129, in <module>
+    main()
+    ~~~~^^
+  File "c:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\fire_tv_neural_cde_transformer_instance_version\Shosyn-1.0\fire_tv_project\fire_tv_neural_cde_transformer\scripts\train_hybrid_model_tmdb.py", line 67, in main
+    train_pbar = tqdm(train_loader, desc=f"Training Epoch {epoch}")
+                 ^^^^
+NameError: name 'tqdm' is not defined

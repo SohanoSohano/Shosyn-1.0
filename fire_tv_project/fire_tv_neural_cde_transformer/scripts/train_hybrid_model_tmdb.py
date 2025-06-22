@@ -1,146 +1,131 @@
-# scripts/train_hybrid_model_tmdb.py (Modified for Synthetic Data Training)
+# scripts/train_hybrid_model_tmdb.py (Advanced Performance Version)
 import sys
 import os
 import torch
+import torch.nn as nn # Needed for gradient clipping
 import wandb
-import pandas as pd
 from torch.utils.data import DataLoader, random_split
+from tqdm import tqdm
+
 
 # --- Project Path Setup ---
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# --- MODIFICATION: Import the new Synthetic Data Loader ---
-from data.synthetic_data_loader import SyntheticFireTVDataset # <-- NEW
-from config.model_config import HybridModelConfig
+# --- Imports (Unchanged) ---
+from config.synthetic_model_config import HybridModelConfig
+from data.synthetic_data_loader import SyntheticFireTVDataset
+from models.hybrid_model import HybridFireTVSystem # Assumes you've added the ResidualBlock
+from training.enhanced_trainer_new import EnhancedHybridModelTrainer # Assumes you've modified the scheduler call
 from config.training_config import TrainingConfig
-from models.hybrid_model import HybridFireTVSystem # Assuming this is your model class
-from training.enhanced_trainer_new import EnhancedHybridModelTrainer
 
 # --- Environment Setup ---
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ['TORCH_USE_CUDA_DSA'] = '1'
 
 def main():
-    print("🧪 Training Hybrid Model on HIGH-FIDELITY SYNTHETIC DATA 🧪")
+    print("🚀🚀🚀 ADVANCED PERFORMANCE TRAINING RUN 🚀🚀🚀")
     print("=" * 70)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    wandb.init(project="firetv-performance-run")
     
-    wandb.init(project="firetv-synthetic-data-training")
-    
-    # --- Load Configurations ---
+    # --- Load Configs & Data (Unchanged) ---
     model_config = HybridModelConfig()
     training_config = TrainingConfig()
-
-    # --- MODIFICATION: Set path to your new synthetic dataset ---
-    DATASET_PATH = r"C:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\fire_tv_neural_cde_transformer_instance_version\Shosyn-1.0\fire_tv_project\fire_tv_neural_cde_transformer\fire_tv_synthetic_dataset_v3_tmdb.csv"
-    print(f"Loading synthetic dataset from: {DATASET_PATH}")
-    
-    # --- MODIFICATION: Use the new SyntheticFireTVDataset ---
-    # This loader is designed specifically for the synthetic data's structure.
-    full_dataset = SyntheticFireTVDataset(DATASET_PATH)
-    
-    # --- Split dataset into training and validation sets ---
+    full_dataset = SyntheticFireTVDataset(r"C:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\fire_tv_neural_cde_transformer_instance_version\Shosyn-1.0\fire_tv_project\fire_tv_neural_cde_transformer\fire_tv_synthetic_dataset_v3_tmdb.csv")
     train_size = int(0.85 * len(full_dataset))
     val_size = len(full_dataset) - train_size
     train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
-
-    # --- Create DataLoaders ---
-    train_loader = DataLoader(
-        dataset=train_dataset,
-        batch_size=training_config.batch_size,
-        num_workers=4,
-        pin_memory=True,
-        shuffle=True
-    )
-
-    val_loader = DataLoader(
-        dataset=val_dataset,
-        batch_size=training_config.batch_size,
-        num_workers=4,
-        pin_memory=True,
-        shuffle=False
-    )
+    train_loader = DataLoader(train_dataset, batch_size=training_config.batch_size, num_workers=4, pin_memory=True, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=training_config.batch_size, num_workers=4, pin_memory=True)
     
-    print(f"🔥 DataLoaders created successfully!")
-    print(f"   Training samples: {len(train_dataset):,}")
-    print(f"   Validation samples: {len(val_dataset):,}")
-
-    # --- MODIFICATION: Adjust Model Config for new data structure ---
-    # The new loader provides features and labels directly.
-    # Get a sample to determine dimensions.
-    sample = full_dataset[0]
-    feature_dim = sample['features'].shape[0]
-    label_dim = sample['labels'].shape[0]
-    
-    model_config.input_dim = feature_dim
-    model_config.output_dim = label_dim
-    
-    print(f"   Input feature dimension: {model_config.input_dim}")
-    print(f"   Output label dimension:  {model_config.output_dim}")
-
-    # --- Initialize Model ---
-    # IMPORTANT: Remember to add nn.Dropout layers inside your HybridFireTVSystem class
-    # in 'models/hybrid_model.py' to add regularization.
     model = HybridFireTVSystem(config=model_config).to(device)
-    print(f"✅ Model created with {sum(p.numel() for p in model.parameters() if p.requires_grad):,} trainable parameters.")
+    optimizer = torch.optim.AdamW(model.parameters(), lr=training_config.learning_rate, weight_decay=0.01)
 
-    # --- MODIFICATION: Configure Optimizer with Weight Decay ---
-    # This is a critical step to prevent overfitting.
-    print("🔧 Configuring optimizer with AdamW and Weight Decay...")
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=training_config.learning_rate,
-        weight_decay=0.01  # <-- NEW: Adds L2 regularization
-    )
+    # --- STRATEGY 1: Dynamic Learning Rate ---
+    # Using CosineAnnealingLR for smooth decay. T_max is one epoch's worth of steps.
+    print("🔧 STRATEGY 1: Implementing CosineAnnealingLR scheduler.")
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=1e-7)
 
-    # --- MODIFICATION: Adjust Loss Weights ---
-    # We are prioritizing the psychological trait prediction.
-    print("⚖️ Adjusting loss weights to prioritize trait prediction...")
-    training_config.loss_weights = {
-        "traits": 2.5,   # <-- INCREASED
-        "genre": 0.1,    # <-- DECREASED
-        "affinity": 0.2, # Keep or adjust
-        "rating": 0.1    # Keep or adjust
-    }
-    print(f"   New Loss Weights: {training_config.loss_weights}")
+    # --- STRATEGY 2: Pass to a modified trainer that uses these new components ---
+    # The trainer will need to be updated to accept the scheduler and use it correctly.
+    # The following is a conceptual integration.
+    
+    # --- Let's define the training loop directly here for clarity ---
+    scaler = torch.cuda.amp.GradScaler()
+    criterion = nn.BCEWithLogitsLoss()
+    num_epochs = 50
+    patience = 10 # Your increased patience
+    patience_counter = 0
+    best_val_loss = float('inf')
 
-    # --- Initialize Trainer ---
-    # Note: The trainer no longer needs tmdb_integration or content_mapping for this synthetic run,
-    # as all data is self-contained. You may need to adjust your trainer's __init__ method
-    # or pass None for those arguments if they are optional.
-    # We assume here the trainer can be simplified for this run.
-    
-    # You might need a simplified trainer or adjust the existing one.
-    # For now, we assume EnhancedHybridModelTrainer can handle this.
-    trainer = EnhancedHybridModelTrainer(
-        model=model,
-        optimizer=optimizer,
-        config=training_config, # Pass the full config object
-        device=device
-        # Remove tmdb_integration, content_mapping if they are not needed for loss calculation
-    )
+    for epoch in range(1, num_epochs + 1):
+        print(f"\n--- Epoch {epoch}/{num_epochs} ---")
+        
+        # Training Loop
+        model.train()
+        train_loss = 0.0
+        train_pbar = tqdm(train_loader, desc=f"Training Epoch {epoch}")
+        for batch in train_pbar:
+            features, labels = batch['features'].to(device), batch['labels'].to(device)
+            
+            # --- STRATEGY 3: Input Noise Injection ---
+            if model.training:
+                features += torch.randn_like(features) * 0.01
 
-    print("\n🚀🚀🚀 Starting training on SYNTHETIC data... 🚀🚀🚀")
-    history = trainer.train(
-        train_loader=train_loader,
-        val_loader=val_loader,
-        num_epochs=training_config.num_epochs
-    )
-    
-    # --- Save the newly trained model ---
-    model_path = "models/synthetic_trained_hybrid_model.pth"
-    os.makedirs("models", exist_ok=True)
-    torch.save(model.state_dict(), model_path)
-    
-    print(f"\n💾 Model trained on synthetic data saved to {model_path}")
-    print("🎉 Training completed successfully!")
-    
+            model_input = {'features': features}
+            optimizer.zero_grad()
+            with torch.cuda.amp.autocast():
+                outputs = model(model_input)
+                loss = criterion(outputs['psychological_traits'], labels)
+            
+            scaler.scale(loss).backward()
+            
+            # --- STRATEGY 4: Gradient Clipping ---
+            scaler.unscale_(optimizer) # Unscale gradients before clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
+            scaler.step(optimizer)
+            scaler.update()
+            scheduler.step() # Step the scheduler every batch
+            
+            train_loss += loss.item()
+            train_pbar.set_postfix(loss=loss.item(), lr=scheduler.get_last_lr()[0])
+            
+        avg_train_loss = train_loss / len(train_loader)
+
+        # Validation Loop
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for batch in tqdm(val_loader, desc=f"Validation Epoch {epoch}"):
+                features, labels = batch['features'].to(device), batch['labels'].to(device)
+                model_input = {'features': features}
+                outputs = model(model_input)
+                loss = criterion(outputs['psychological_traits'], labels)
+                val_loss += loss.item()
+        
+        avg_val_loss = val_loss / len(val_loader)
+        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "epoch": epoch, "lr": scheduler.get_last_lr()[0]})
+        print(f"Epoch {epoch}: Train Loss = {avg_train_loss:.6f}, Validation Loss = {avg_val_loss:.6f}")
+
+        # Early Stopping Logic
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            patience_counter = 0
+            torch.save(model.state_dict(), "models/best_performance_model.pth")
+            print(f"💡 Validation loss improved. Model saved to models/best_performance_model.pth")
+        else:
+            patience_counter += 1
+            print(f"⏳ No improvement for {patience_counter}/{patience} epochs.")
+        
+        if patience_counter >= patience:
+            print(f"🛑 Early stopping triggered at epoch {epoch}.")
+            break
+
+    print("\n🎉 Advanced Training finished!")
     wandb.finish()
-    return history
 
 if __name__ == "__main__":
     main()
