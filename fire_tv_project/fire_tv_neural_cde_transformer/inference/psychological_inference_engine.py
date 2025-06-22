@@ -155,9 +155,23 @@ class PsychologicalInferenceEngine:
         feature_values = [float(behavior.get(feature, 0)) for feature in feature_order]
         return torch.tensor([feature_values], dtype=torch.float32).to(self.device)
     
+    # Add this debug code to your inference engine
+    def debug_model_inputs(self, user_behavior):
+        feature_tensor = self._behavior_to_tensor(user_behavior)
+        print(f"Debug - Input tensor: {feature_tensor}")
+        
+        with torch.no_grad():
+            # Get intermediate outputs
+            model_input = {'features': feature_tensor}
+            outputs = self.model(model_input)
+            print(f"Debug - Raw model output: {outputs['psychological_traits']}")
+
+
+
     def predict_user_psychology(self, user_behavior: Dict) -> torch.Tensor:
         """Convert user behavior into psychological trait vector."""
         try:
+            self.debug_model_inputs(user_behavior)  
             feature_tensor = self._behavior_to_tensor(user_behavior)
             model_input = {'features': feature_tensor}
             
