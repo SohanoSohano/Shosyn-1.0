@@ -40,7 +40,7 @@ handler.setFormatter(formatter)
 
 # --- Configuration ---
 # Use os.path.join for robust path construction
-MODEL_PATH = os.path.join(project_root, "models", "tmdb_enhanced_hybrid_model_cuda.pth")
+MODEL_PATH = os.path.join(project_root, "models", "best_synthetic_trained_model.pth")
 ITEM_CATALOG_PATH = os.path.join(project_root, "data", "item_catalog.csv")
 # --- Initialize Flask App and Recommendation Service ---
 print("Starting Recommendation API...")
