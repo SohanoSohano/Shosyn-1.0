@@ -10,7 +10,7 @@ Our initial vision for this project was centered on **Neural Controlled Differen
 
 However, through a rigorous, data-driven development process, the project evolved to prioritize a practical, and efficient solution that balances theoretical complexity with real-world performance. The final deployed architecture strategically combines a fast, rule-based heuristic engine with a machine learning model fallback, all served via a Flask API.
 
-## 2. Progress So Far: A Journey of Development and Debugging
+## 2. Progress So Far: A Journey of Development and Debugging (Primary Repository Branch - instance_origin)
 
 We have successfully developed, debugged, and refined a content recommendation pipeline, meticulously documenting our progress and overcoming significant technical hurdles.
 
