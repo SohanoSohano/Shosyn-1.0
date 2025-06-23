@@ -101,7 +101,7 @@ While we have a robust system in place, the field of personalized recommendation
 *   **Explicit User Feedback**: Incorporate mechanisms for direct user feedback (e.g., "thumbs up/down" on recommendations) to refine preference learning and personalize further.
 *   **Cold Start Problem**: Develop specialized strategies for new users or new content items where historical data is scarce.
 
-## 6. Usage
+## 6. Usage (Testing)
 
 1.  **Generate Data**:
     *   Run `scripts/generate_enhanced_temporal_dataset.py` to create the dataset required for training temporal models.
