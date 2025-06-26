@@ -10,7 +10,7 @@ from llm_agent import LLMAgent
 from firetv_environment import FireTVEnvironment
 
 # --- Simulation Configuration ---
-NUM_SESSIONS_TO_SIMULATE = 50 # Increase for a larger dataset
+NUM_SESSIONS_TO_SIMULATE = 5 # Increase for a larger dataset
 OUTPUT_FILE = "final_simulation_logs.csv"
 TMDB_DATA_PATH = "tmdb_5000_movies.csv"
 
@@ -62,11 +62,6 @@ def main():
     content_catalog = load_and_preprocess_content(TMDB_DATA_PATH)
     all_events = []
     
-    current_time = datetime.now()
-    # To track last action timestamp for sequence_context
-    session_start_time = {} 
-    last_action_timestamp_per_session = {}
-
     for session_id_int in tqdm(range(NUM_SESSIONS_TO_SIMULATE), desc="Simulating Sessions"):
         session_id = f"session_{session_id_int}"
         persona = random.choice(PERSONAS)
@@ -76,15 +71,15 @@ def main():
         env = FireTVEnvironment(content_df=content_catalog)
         
         obs, _, done, _ = env.reset()
-        session_start_time[session_id] = datetime.now()
-        last_action_timestamp_per_session[session_id] = session_start_time[session_id]
-
-        consecutive_action_count = {} # Per action type
-        last_action_type_per_session = {}
         
-        # Log session_start event
+        # --- Internal state for sequence and time tracking ---
+        last_action_timestamp = datetime.now()
+        consecutive_action_count_map = {} # Maps action_type to its consecutive count
+        last_logged_action_type = "session_start"
+
+        # --- Log session_start event ---
         log_entry = {
-            "timestamp": session_start_time[session_id].isoformat(), "session_id": session_id, "user_id": user_id,
+            "timestamp": last_action_timestamp.isoformat(), "session_id": session_id, "user_id": user_id,
             "action_type": "session_start", "screen_context": "Home", "focused_item": None,
             "derived_states": json.dumps(agent.state.copy()), "sequence_context": {"time_since_last_action": 0.0, "consecutive_action_count": 0}
         }
@@ -94,122 +89,131 @@ def main():
         while not done:
             # Simulate irregular time between actions
             time_delta_seconds = max(0.3, random.uniform(0.5, 4.0) - agent.state['frustration_level'] * 2)
-            current_time = last_action_timestamp_per_session[session_id] + timedelta(seconds=time_delta_seconds)
+            current_event_timestamp = last_action_timestamp + timedelta(seconds=time_delta_seconds)
             
             decision = agent.decide_action(obs)
-            action_type = decision.get('action_type', 'dpad_right')
-
-            # --- Apply decision to environment to get next state and outcome ---
+            
+            # --- Take a step in the environment, getting all the info for precise logging ---
             next_obs, _, done, info = env.step(decision)
             
-            # --- Delayed Logging Logic (Mimicking Android App) ---
-            # 1. Log the DPAD event that CAUSED this focus change
-            if info['last_dpad_key_code'] and info['action_outcome'] == 'new_content_seen':
-                dpad_action_type = info['last_dpad_key_code']
+            # --- LOGGING STRATEGY: MIMICKING ANDROID UI ---
+            
+            # 1. Log the HOVER event first, if focus changed and a previous item was hovered
+            if 'logged_hover_item' in info['llm_decision'] and info['llm_decision']['logged_hover_item']:
+                hover_item = info['llm_decision']['logged_hover_item']
+                hover_duration_val = info['llm_decision']['hover_duration']
                 
-                # Update consecutive count for DPAD event
-                current_dpad_consecutive_count = (consecutive_action_count.get(dpad_action_type, 0) + 1) if dpad_action_type == last_action_type_per_session.get(session_id) else 1
-                consecutive_action_count[dpad_action_type] = current_dpad_consecutive_count
+                consecutive_count_hover = (consecutive_action_count_map.get("hover", 0) + 1) if "hover" == last_logged_action_type else 1
+                consecutive_action_count_map["hover"] = consecutive_count_hover
 
-                dpad_log_entry = {
-                    "timestamp": current_time.isoformat(),
-                    "session_id": session_id,
-                    "user_id": user_id,
-                    "action_type": dpad_action_type,
-                    "screen_context": obs['screen_context'],
-                    "focused_item": json.dumps(info['prev_focused_item']), # Item that lost focus (previous item)
-                    "derived_states": json.dumps(agent.state.copy()),
-                    "sequence_context": json.dumps({
-                        "time_since_last_action": round((current_time - last_action_timestamp_per_session[session_id]).total_seconds(), 2),
-                        "consecutive_action_count": current_dpad_consecutive_count
-                    })
-                }
-                all_events.append(dpad_log_entry)
-                
-                # Update last action type and timestamp after logging DPAD
-                last_action_timestamp_per_session[session_id] = current_time
-                last_action_type_per_session[session_id] = dpad_action_type
-                
-            # 2. Log the HOVER event for the PREVIOUS item when focus is lost (if it was a movie)
-            if action_type != 'hover' and info['prev_focused_item'] and info['prev_focused_item'].get('item_id') and 'hover_duration' in decision:
                 hover_log_entry = {
-                    "timestamp": current_time.isoformat(), # Same timestamp as the dpad event
+                    "timestamp": current_event_timestamp.isoformat(),
                     "session_id": session_id,
                     "user_id": user_id,
                     "action_type": "hover",
-                    "screen_context": obs['screen_context'],
-                    "focused_item": json.dumps(info['prev_focused_item']), # Item that lost focus
+                    "screen_context": info['current_screen_context'], # Screen where hover happened
+                    "focused_item": json.dumps(hover_item), # The item that was hovered over
                     "derived_states": json.dumps(agent.state.copy()),
                     "sequence_context": json.dumps({
-                        "time_since_last_action": 0.001, # Minimal time difference
-                        "consecutive_action_count": (consecutive_action_count.get("hover", 0) + 1) if "hover" == last_action_type_per_session.get(session_id) else 1
+                        "time_since_last_action": round((current_event_timestamp - last_action_timestamp).total_seconds(), 2),
+                        "consecutive_action_count": consecutive_count_hover
                     }),
-                    "hover_duration": decision['hover_duration']
+                    "hover_duration": hover_duration_val
                 }
                 all_events.append(hover_log_entry)
+                last_action_timestamp = current_event_timestamp
+                last_logged_action_type = "hover"
+            
+            # 2. Log DPAD event if a dpad key caused focus change
+            if info['prev_focused_item_for_dpad_log'] and info['last_dpad_key_code'] :
+                dpad_action_type = info['last_dpad_key_code']
                 
-                # Update last action type and timestamp for HOVER if logged
-                last_action_timestamp_per_session[session_id] = current_time
-                last_action_type_per_session[session_id] = "hover"
+                consecutive_count_dpad = (consecutive_action_count_map.get(dpad_action_type, 0) + 1) if dpad_action_type == last_logged_action_type else 1
+                consecutive_action_count_map[dpad_action_type] = consecutive_count_dpad
 
-
-            # 3. Log other actions (click, back, scroll, etc.) immediately
-            if action_type not in ['dpad_right', 'dpad_left', 'dpad_down', 'dpad_up', 'hover']: # These are handled specially
-                current_consecutive_count = (consecutive_action_count.get(action_type, 0) + 1) if action_type == last_action_type_per_session.get(session_id) else 1
-                consecutive_action_count[action_type] = current_consecutive_count
-
-                main_log_entry = {
-                    "timestamp": current_time.isoformat(),
+                dpad_log_entry = {
+                    "timestamp": current_event_timestamp.isoformat(),
                     "session_id": session_id,
                     "user_id": user_id,
-                    "action_type": action_type,
-                    "screen_context": obs['screen_context'],
-                    "focused_item": json.dumps(obs['focused_item']) if action_type != 'back' else json.dumps(info['prev_focused_item']), # Focused item at action time
+                    "action_type": dpad_action_type,
+                    "screen_context": info['current_screen_context'],
+                    "focused_item": json.dumps(info['prev_focused_item_for_dpad_log']), # Item the dpad moved FROM
                     "derived_states": json.dumps(agent.state.copy()),
                     "sequence_context": json.dumps({
-                        "time_since_last_action": round((current_time - last_action_timestamp_per_session[session_id]).total_seconds(), 2),
-                        "consecutive_action_count": current_consecutive_count
+                        "time_since_last_action": round((current_event_timestamp - last_action_timestamp).total_seconds(), 2),
+                        "consecutive_action_count": consecutive_count_dpad
+                    })
+                }
+                all_events.append(dpad_log_entry)
+                last_action_timestamp = current_event_timestamp
+                last_logged_action_type = dpad_action_type
+
+            # 3. Log Main Action (Click, Back, Scroll, Playback events)
+            # Exclude dpad and hover, which were handled above by their specific triggers
+            main_action_types = ['click', 'back', 'scroll', 'playback_abandon', 'playback_completed']
+            if decision['action_type'] in main_action_types:
+                
+                consecutive_count_main = (consecutive_action_count_map.get(decision['action_type'], 0) + 1) if decision['action_type'] == last_logged_action_type else 1
+                consecutive_action_count_map[decision['action_type']] = consecutive_count_main
+
+                main_log_entry = {
+                    "timestamp": current_event_timestamp.isoformat(),
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "action_type": decision['action_type'],
+                    "screen_context": info['current_screen_context'],
+                    "focused_item": json.dumps(info['current_focused_item_data']), # Item in focus AT THE TIME of this action
+                    "derived_states": json.dumps(agent.state.copy()),
+                    "sequence_context": json.dumps({
+                        "time_since_last_action": round((current_event_timestamp - last_action_timestamp).total_seconds(), 2),
+                        "consecutive_action_count": consecutive_count_main
                     })
                 }
                 
-                # Add optional fields based on the LLM's decision
-                for key in ['click_type', 'scroll_speed', 'scroll_depth', 'playback_position', 'session_end_reason']:
-                    if key in decision:
-                        main_log_entry[key] = decision[key]
+                # Add optional fields
+                if 'click_type' in decision: main_log_entry['click_type'] = decision['click_type']
+                if 'scroll_speed' in decision: main_log_entry['scroll_speed'] = decision['scroll_speed']
+                if 'scroll_depth' in decision: main_log_entry['scroll_depth'] = decision['scroll_depth']
+                
+                # Playback position needs normalization
+                if 'playback_position' in decision:
+                    # Assuming LLM returns 0-100% or similar; normalize to 0-1 float
+                    main_log_entry['playback_position'] = float(decision['playback_position']) / 100.0 if decision['playback_position'] > 1.0 else float(decision['playback_position'])
+                
+                # Session end reason (if session ends due to this action)
+                if 'session_end_reason' in info['llm_decision']:
+                    main_log_entry['session_end_reason'] = info['llm_decision']['session_end_reason']
                 
                 all_events.append(main_log_entry)
-                
-                # Update last action type and timestamp for main log
-                last_action_timestamp_per_session[session_id] = current_time
-                last_action_type_per_session[session_id] = action_type
-
-
-            # --- Update agent's state based on environment outcome ---
+                last_action_timestamp = current_event_timestamp
+                last_logged_action_type = decision['action_type']
+            
+            # --- Update agent's internal state ---
             agent.update_state(info['action_outcome'], {
-                "action_type": action_type, # Pass the actual action for update
-                "sequence_context": sequence_context, # Pass sequence context for heuristics
-                "hover_duration": decision.get('hover_duration'), # Pass hover duration if applicable
-                "playback_position": decision.get('playback_position'), # Pass playback position if applicable
+                "action_type": decision['action_type'],
+                "sequence_context": sequence_context, # Original sequence context for the main decision
+                "hover_duration": decision.get('hover_duration', 0.0),
+                "playback_position": decision.get('playback_position', 0.0) / 100.0 if decision.get('playback_position', 0.0) > 1.0 else decision.get('playback_position', 0.0)
             })
             
-            obs = next_obs
-            # Clear last dpad key code if a focus change occurred, handled by env.step now
-            env.last_dpad_key_code = None
+            obs = next_obs # Update observation for next loop iteration
 
         # --- Session End Logic ---
-        # Ensure final state is captured
-        final_log_time = last_action_timestamp_per_session[session_id] + timedelta(seconds=0.5)
-        log_entry_session_end = {
-            "timestamp": final_log_time.isoformat(), "session_id": session_id, "user_id": user_id,
-            "action_type": "session_end", "screen_context": obs['screen_context'], "focused_item": json.dumps(obs['focused_item']),
-            "derived_states": json.dumps(agent.state.copy()), "sequence_context": {"time_since_last_action": 0.5, "consecutive_action_count": 0},
-            "session_end_reason": info['llm_decision'].get('session_end_reason', 'user_abandoned')
-        }
-        all_events.append(log_entry_session_end)
+        # Ensure final session_end event is logged (if not already logged by an action)
+        if not (done and 'session_end_reason' in info['llm_decision']): # Only log if not ended by click/back
+            final_log_time = last_action_timestamp + timedelta(seconds=0.5)
+            log_entry_session_end = {
+                "timestamp": final_log_time.isoformat(), "session_id": session_id, "user_id": user_id,
+                "action_type": "session_end", "screen_context": info['current_screen_context'], "focused_item": json.dumps(obs['focused_item']),
+                "derived_states": json.dumps(agent.state.copy()), "sequence_context": {"time_since_last_action": 0.5, "consecutive_action_count": 0},
+                "session_end_reason": info['llm_decision'].get('session_end_reason', 'timeout') # Default to timeout
+            }
+            all_events.append(log_entry_session_end)
 
     print(f"\nSimulation complete. Generated {len(all_events)} events.")
     df_logs = pd.DataFrame(all_events)
-    # Ensure nested JSON fields are parsed correctly during CSV write/read
+    # Ensure nested JSON fields are parsed correctly after CSV write/read for analysis
+    # For actual analysis, you might parse these columns:
     # df_logs['focused_item'] = df_logs['focused_item'].apply(json.loads)
     # df_logs['derived_states'] = df_logs['derived_states'].apply(json.loads)
     # df_logs['sequence_context'] = df_logs['sequence_context'].apply(json.loads)

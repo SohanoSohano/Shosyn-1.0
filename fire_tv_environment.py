@@ -26,7 +26,6 @@ class FireTVEnvironment(environment.Environment):
         grid = []
         all_genres = self.content_df['genres'].explode().dropna().unique()
         
-        # Ensure we have enough genres for rows, or repeat
         if len(all_genres) < self.num_rows:
             genres_for_rows = np.resize(all_genres, self.num_rows)
         else:
@@ -36,7 +35,6 @@ class FireTVEnvironment(environment.Environment):
             items_in_genre = self.content_df[self.content_df['genres'].apply(lambda x: genre_for_row in x if isinstance(x, list) else False)]
             
             if items_in_genre.empty or len(items_in_genre) < self.row_size:
-                # Fallback to random items if not enough specific genre items
                 items_for_row = self.content_df.sample(self.row_size, replace=True) 
             else:
                 items_for_row = items_in_genre.sample(self.row_size, replace=False)
@@ -51,21 +49,27 @@ class FireTVEnvironment(environment.Environment):
         self.active_col = 0
         self.session_steps = 0
         self.current_screen_context = 'Home' # Initial screen
-        self.prev_focused_item_data = None # To track item that just lost focus for hover/dpad logging
-        self.last_dpad_key_code = None # To store the raw dpad press
+        
+        # Track previous states for accurate delayed logging
+        self.prev_focused_item_for_dpad_log = None # Item focus moved FROM
+        self.last_dpad_key_code = None # Raw dpad press that led to focus change
+        
+        self.current_hover_item = None # Item currently being hovered (gained focus)
+        self.last_hover_start_time = None # Timestamp when current_hover_item gained focus
+        
+        # Trailer playback state for logging playback_abandon
+        self.trailer_playing = False
+        self.trailer_start_time = 0
         
         return self._get_observation(), 0, False, {}
 
     def _get_observation(self) -> dict:
         """Constructs the current state observation for the LLM agent."""
-        # Ensure active_row and active_col are within bounds
         self.active_row = np.clip(self.active_row, 0, self.num_rows - 1)
         self.active_col = np.clip(self.active_col, 0, self.row_size - 1)
 
-        # Get the item currently in focus
         focused_item_data = self.grid[self.active_row][self.active_col]
         
-        # Ensure multi-label genres are a list
         if isinstance(focused_item_data['genres'], str):
             focused_item_data['genres'] = [focused_item_data['genres']]
 
@@ -87,92 +91,119 @@ class FireTVEnvironment(environment.Environment):
         self.session_steps += 1
         
         done = False
-        action_outcome = 'no_change'
+        action_outcome = 'no_change' # Outcome for LLM agent's state update
         
         prev_row, prev_col = self.active_row, self.active_col
         prev_screen_context = self.current_screen_context
+        
+        # Current focused item before any potential focus change by dpad
+        current_focused_item_pre_action = self._get_observation()['focused_item']
 
-        # Store the current focused item before any potential focus change
-        self.prev_focused_item_data = self._get_observation()['focused_item']
+        # --- D-pad Actions ---
+        # Store original LLM decision for direct D-pad logging (MainActivity.kt style)
+        if action_type in ['dpad_right', 'dpad_left', 'dpad_down', 'dpad_up']:
+            self.last_dpad_key_code = action_type # Store the raw dpad press
 
-        # --- Screen-specific Action Handling & Focus Changes ---
         if self.current_screen_context == 'Home':
             if action_type == 'dpad_right':
                 if self.active_col < self.row_size - 1:
                     self.active_col += 1
                     action_outcome = 'new_content_seen'
-                    self.last_dpad_key_code = 'dpad_right'
             elif action_type == 'dpad_left':
                 if self.active_col > 0:
                     self.active_col -= 1
                     action_outcome = 'new_content_seen'
-                    self.last_dpad_key_code = 'dpad_left'
             elif action_type == 'dpad_down':
                 if self.active_row < self.num_rows - 1:
                     self.active_row += 1
                     action_outcome = 'new_content_seen'
-                    self.last_dpad_key_code = 'dpad_down'
             elif action_type == 'dpad_up':
                 if self.active_row > 0:
                     self.active_row -= 1
                     action_outcome = 'new_content_seen'
-                    self.last_dpad_key_code = 'dpad_up'
             elif action_type == 'click':
-                # Click from Home goes to Detail_Page
+                # Click from Home goes to Detail_Page (MovieDetailsDialogFragment)
                 self.current_screen_context = 'Detail_Page'
                 action_outcome = 'transitioned_to_detail_page'
-                self.last_dpad_key_code = None # Clear dpad key code after non-dpad action
             elif action_type == 'back':
                 # Back from Home exits the app
                 done = True
                 llm_decision['session_end_reason'] = 'user_exit_from_home'
-                self.last_dpad_key_code = None
-            elif action_type in ['hover', 'scroll']: # These actions don't change focus or screen
-                self.last_dpad_key_code = None
+            elif action_type in ['hover', 'scroll', 'playback_completed']: # These actions don't change focus or screen on their own
+                pass # Handled by logging logic, not env state change
 
         elif self.current_screen_context == 'Detail_Page':
             if action_type == 'click':
+                # Assume click on Detail_Page for 'play' leads to app exit (launchDeeplink)
                 if llm_decision.get('click_type') == 'play':
-                    self.current_screen_context = 'Playback'
-                    action_outcome = 'transitioned_to_playback'
-                else:
+                    done = True # Simulates launching external app
+                    action_outcome = 'launched_external_app'
+                    llm_decision['session_end_reason'] = 'launched_playback'
+                else: # Any other click type (more_info, trailer etc.) means staying on Detail_Page
                     action_outcome = 'content_info_accessed'
             elif action_type == 'back':
                 self.current_screen_context = 'Home'
                 action_outcome = 'transitioned_to_home'
-            self.last_dpad_key_code = None
-
-        elif self.current_screen_context == 'Playback':
+        
+        elif self.current_screen_context == 'Playback': # This context is mainly for logging within Home
             if action_type == 'back':
-                self.current_screen_context = 'Detail_Page'
-                action_outcome = 'transitioned_to_detail_page'
+                self.current_screen_context = 'Home' # Go back to Home
+                action_outcome = 'transitioned_to_home'
+                # If a full movie playback started from deeplink, then back might also mean session ends
+                # For now, assumes back during trailer playback on home
             elif action_type == 'playback_abandon':
-                self.current_screen_context = 'Detail_Page'
+                self.current_screen_context = 'Home' # Assumes returning to Home from banner playback
                 action_outcome = 'playback_abandoned'
-            self.last_dpad_key_code = None
+                self.trailer_playing = False # Stop trailer
+            elif action_type == 'playback_completed': # New action for trailer completion
+                self.current_screen_context = 'Home'
+                action_outcome = 'playback_completed'
+                self.trailer_playing = False
+
+        # --- Update current_hover_item and last_hover_start_time ---
+        # Mimic MovieFragment's setOnItemViewSelectedListener and GlobalFocusChangeListener
+        new_focused_item_data = self._get_observation()['focused_item'] # Item that just gained focus
+
+        if self.current_hover_item and (self.current_hover_item['item_id'] != new_focused_item_data['item_id']):
+            # This item lost focus. It was the previously hovered item.
+            # This is where we capture the hover duration for the item that just lost focus.
+            llm_decision['logged_hover_item'] = self.current_hover_item
+            llm_decision['logged_hover_start_time'] = self.last_hover_start_time
+
+        # Update current hover item for the newly focused item
+        self.current_hover_item = new_focused_item_data
+        self.last_hover_start_time = self.session_steps # Using step count as proxy for time here in env
+
+        # --- Track previous focused item for D-pad logging ---
+        if self.active_row != prev_row or self.active_col != prev_col:
+            # If focus changed, store the item that was focused BEFORE this change
+            self.prev_focused_item_for_dpad_log = current_focused_item_pre_action
+        else:
+            self.prev_focused_item_for_dpad_log = None # No focus change, no dpad log from this change
+
+        # --- Handle trailer playback state (for accurate logPreviousTrailerDuration mimic) ---
+        if action_type == 'click' and llm_decision.get('click_type') == 'trailer':
+            self.trailer_playing = True
+            self.trailer_start_time = self.session_steps # Proxy for System.currentTimeMillis()
+        elif action_type == 'back' or action_type == 'playback_abandon' or action_type == 'playback_completed':
+            self.trailer_playing = False # Trailer stopped
 
         # --- General Session Management ---
         if self.session_steps > 60: # Max steps per session to prevent infinite loops
             done = True
             llm_decision['session_end_reason'] = 'timeout'
         
-        # Determine session end reason for 'click' or 'back' that truly ends the session
-        if done and action_type == 'click' and self.current_screen_context == 'Playback': # If click led to playback start
-            llm_decision['session_end_reason'] = 'playback_started'
-        elif done and action_type == 'back' and prev_screen_context == 'Home': # Back from Home
-             llm_decision['session_end_reason'] = 'user_exit_from_home'
-        elif done and action_type == 'back' and prev_screen_context != 'Home' and not done: # Back from other screens, but not exit
-             # This means the back action transitioned to a previous screen, session is not done
-             llm_decision['session_end_reason'] = 'navigated_back'
-
-
         observation = self._get_observation()
-        # The 'info' dict now also includes the previous focused item for delayed logging
+        # The 'info' dict now carries all necessary data for run_simulation.py to log events
         info = {
             'action_outcome': action_outcome, 
             'llm_decision': llm_decision,
-            'prev_focused_item': self.prev_focused_item_data, # Item that lost focus
-            'last_dpad_key_code': self.last_dpad_key_code # Raw dpad press that caused focus change
+            'prev_focused_item_for_dpad_log': self.prev_focused_item_for_dpad_log, # Item from which dpad moved
+            'last_dpad_key_code': self.last_dpad_key_code, # Dpad key that was pressed
+            'current_focused_item_data': new_focused_item_data, # Item that gained focus (for non-dpad, non-hover logs)
+            'trailer_playing': self.trailer_playing,
+            'trailer_start_time': self.trailer_start_time,
+            'current_screen_context': self.current_screen_context # Pass the updated context
         }
         
         return observation, 0, done, info
