@@ -1,7 +1,0 @@
-{"time":"2025-06-18T00:45:18.3577606+05:30","level":"INFO","msg":"stream: starting","core version":"0.20.1","symlink path":"C:\\Users\\solos\\OneDrive\\Documents\\College\\Projects\\Advanced Behavioural Analysis for Content Recommendation\\Shosyn\\fire_tv_neural_cde_transformer\\wandb\\run-20250618_004517-68ifo7hw\\logs\\debug-core.log"}
-{"time":"2025-06-18T00:45:19.9334742+05:30","level":"INFO","msg":"stream: created new stream","id":"68ifo7hw"}
-{"time":"2025-06-18T00:45:19.9334742+05:30","level":"INFO","msg":"stream: started","id":"68ifo7hw"}
-{"time":"2025-06-18T00:45:19.9337492+05:30","level":"INFO","msg":"writer: Do: started","stream_id":"68ifo7hw"}
-{"time":"2025-06-18T00:45:19.9337492+05:30","level":"INFO","msg":"handler: started","stream_id":"68ifo7hw"}
-{"time":"2025-06-18T00:45:19.9337492+05:30","level":"INFO","msg":"sender: started","stream_id":"68ifo7hw"}
-{"time":"2025-06-18T00:45:20.4590221+05:30","level":"INFO","msg":"Starting system monitor"}
