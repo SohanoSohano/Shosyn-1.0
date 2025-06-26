@@ -11,7 +11,7 @@ from llm_agent import LLMAgent
 from firetv_environment import FireTVEnvironment
 
 # --- Simulation Configuration ---
-NUM_SESSIONS_TO_SIMULATE = 100 # Increased for more data generation
+NUM_SESSIONS_TO_SIMULATE = 20 # Increased for more data generation
 OUTPUT_FILE_PREFIX = "simulation_logs" 
 TMDB_DATA_PATH = "tmdb_5000_movies.csv"
 
@@ -177,6 +177,14 @@ def main():
             
             decision = agent.decide_action(obs) 
             action_type = decision.get('action_type', 'dpad_right')
+
+            # --- CIRCUIT BREAKER LOGIC ---
+            # If the environment reports too many consecutive clicks, override the LLM's decision
+            if obs.get('consecutive_click_count', 0) >= 3:
+                print(f"Circuit Breaker Triggered: Worker {sys.argv[1] if len(sys.argv) > 1 else 'default'}, Session {session_id_int}. Forcing 'back' action.")
+                decision = {'action_type': 'back'}
+                action_type = 'back'
+            # --- END CIRCUIT BREAKER ---
 
             _agent_update_consecutive_count = (consecutive_action_count_map.get(action_type, 0) + 1) if action_type == last_logged_action_type else 1
             agent_update_sequence_context = {

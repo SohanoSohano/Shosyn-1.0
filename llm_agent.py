@@ -24,11 +24,8 @@ class LLMAgent:
 
         self.user_id = user_id
         self.persona = persona
-        
-        # LLM model to use (llama3:8b or mistral)
         self.llm_model = llm_model 
         
-        # Initialize the agent's dynamic psychological state (used internally for decisions)
         self.state = {
             "frustration_level": 0.0,
             "cognitive_load": 0.1,
@@ -56,9 +53,10 @@ class LLMAgent:
         **Current Situation in the App:**
         - You are on the '{screen_context}' screen.
         """
-        # MODIFICATION: Add specific context and rules for the Detail_Page
+        # MODIFICATION: Add dynamic, state-aware prompt for the Detail_Page
         if screen_context == 'Detail_Page':
-            prompt += "- You can see the following interactive elements: Play Button, Trailer Button, Back Button. You should not click any button more than twice consecutively on this screen.\n"
+            click_count = observation.get('consecutive_click_count', 0)
+            prompt += f"- You have already clicked on this item {click_count} times. Repeating the same 'click' action again is unrealistic. Consider other options like 'back' or 'play'.\n"
         
         prompt += f"- The item currently in focus (highlighted) is: {item_desc}\n"
 
@@ -67,29 +65,24 @@ class LLMAgent:
         Choose ONE action type from the list below. If the action requires parameters, you MUST include them.
 
         **Allowed Action Types and Parameters:**
-        - 'dpad_right': Move focus right.
-        - 'dpad_left': Move focus left.
-        - 'dpad_down': Move focus down.
-        - 'dpad_up': Move focus up.
+        - 'dpad_right', 'dpad_left', 'dpad_down', 'dpad_up'
         - 'click': Interact with the focused item.
             - MUST include 'click_type': 'play', 'more_info', or 'trailer'.
         - 'back': Go back to the previous screen or exit the app.
         - 'hover': Briefly focus on an item.
-            - MUST include 'hover_duration': (float from 0.5 to 10.0 seconds). This reflects how long you briefly pause on it before moving on.
+            - MUST include 'hover_duration': (float from 0.5 to 10.0 seconds).
 
         **Output Format:**
         You MUST reply in a valid JSON object. Do not include any other text or reasoning outside the JSON.
         Example for dpad: {{ "action_type": "dpad_right" }}
         Example for click: {{ "action_type": "click", "click_type": "more_info" }}
-        Example for hover: {{ "action_type": "hover", "hover_duration": 3.5 }}
         """
         return prompt
 
     def decide_action(self, observation: dict) -> dict:
-        """Queries the local LLM to decide the next action."""
         prompt = self._create_prompt(observation)
         
-        for _ in range(3): # Retry loop for robustness
+        for _ in range(3):
             try:
                 response = self.client.chat.completions.create(
                     model=self.llm_model,
@@ -99,23 +92,18 @@ class LLMAgent:
                 )
                 decision = json.loads(response.choices[0].message.content)
                 
-                # Ensure LLM doesn't generate scroll_depth/speed as they are post-processed
                 if decision.get('action_type') == 'scroll':
-                    decision.pop('scroll_depth', None)
-                    decision.pop('scroll_speed', None)
+                    decision['action_type'] = 'dpad_down'
 
                 return decision
             except (json.JSONDecodeError, openai.APIError) as e:
                 print(f"LLM Error: {e}. Retrying...")
                 time.sleep(1)
         
-        # Fallback action if LLM fails repeatedly
-        return {"action_type": "dpad_right"} # Default safe action
+        return {"action_type": "dpad_right"}
 
     def update_state(self, action_outcome: str, event_details: dict):
-        """Updates the agent's psychological state using our defined heuristics."""
-        
-        # --- Frustration Calculation ---
+        # Frustration Calculation
         frustration_increase = 0
         if action_outcome == 'no_change' and event_details.get('sequence_context', {}).get('consecutive_action_count', 0) >= 2:
             frustration_increase = 0.15 * event_details['sequence_context']['consecutive_action_count']
@@ -123,25 +111,23 @@ class LLMAgent:
             frustration_increase = 0.3
         
         if frustration_increase > 0:
-            frustration_increase *= (1 + self.persona['ocean']['neuroticism']) # Apply Neuroticism multiplier
+            frustration_increase *= (1 + self.persona['ocean']['neuroticism'])
             self.state['frustration_level'] = min(1.0, self.state['frustration_level'] + frustration_increase)
         
-        # Frustration decays on successful, goal-oriented actions
         if event_details.get('action_type') == 'click' and event_details.get('click_type') == 'play':
             self.state['frustration_level'] *= 0.7
 
-        # --- Cognitive Load Calculation ---
+        # Cognitive Load Calculation
         load_increase = 0
         if event_details.get('sequence_context', {}).get('time_since_last_action', 0) > 4.0:
             load_increase = 0.05 * (event_details['sequence_context']['time_since_last_action'] / 4.0)
         elif event_details.get('action_type') == 'hover':
             load_increase = 0.05 * event_details.get('hover_duration', 0)
-        elif action_outcome == 'new_content_seen': # When user navigates to a new item
+        elif action_outcome == 'new_content_seen':
             load_increase = 0.1
         
         self.state['cognitive_load'] = min(1.0, self.state['cognitive_load'] + load_increase)
         
-        # Cognitive load decays after a decision is made or over time
         if event_details.get('action_type') == 'click':
             self.state['cognitive_load'] *= 0.5
         else:

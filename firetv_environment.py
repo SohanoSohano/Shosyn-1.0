@@ -82,6 +82,10 @@ class FireTVEnvironment(environment.Environment):
         
         self.trailer_playing = False
         self.trailer_start_time = 0
+        
+        # MODIFICATION: Track consecutive clicks on the same item on Detail_Page
+        self.consecutive_click_count = 0
+        self.last_clicked_item_id = None
 
         return self._get_observation(), 0, False, {}
 
@@ -95,7 +99,6 @@ class FireTVEnvironment(environment.Environment):
         if isinstance(focused_item_data['genres'], str):
             focused_item_data['genres'] = [focused_item_data['genres']]
 
-        # MODIFICATION: Add available_ui_elements for Detail_Page
         obs = {
             'screen_context': self.current_screen_context,
             'focused_item': {
@@ -105,9 +108,10 @@ class FireTVEnvironment(environment.Environment):
             },
         }
 
-        # Add available UI elements on Detail_Page to help LLM avoid repetitive clicks
         if self.current_screen_context == 'Detail_Page':
             obs['available_ui_elements'] = ['play_button', 'trailer_button', 'back_button', 'synopsis_text']
+            # MODIFICATION: Add click count to the observation
+            obs['consecutive_click_count'] = self.consecutive_click_count
 
         return obs
 
@@ -121,6 +125,18 @@ class FireTVEnvironment(environment.Environment):
         prev_row, prev_col = self.active_row, self.active_col
         
         current_focused_item_pre_action = self._get_observation()['focused_item']
+
+        # MODIFICATION: Update consecutive_click_count logic
+        if self.current_screen_context == 'Detail_Page' and action_type == 'click':
+            if current_focused_item_pre_action['item_id'] == self.last_clicked_item_id:
+                self.consecutive_click_count += 1
+            else:
+                self.consecutive_click_count = 1
+            self.last_clicked_item_id = current_focused_item_pre_action['item_id']
+        else:
+            # Reset click counter if not on detail page or not a click action
+            self.consecutive_click_count = 0
+            self.last_clicked_item_id = None
 
         if action_type in ['dpad_right', 'dpad_left', 'dpad_down', 'dpad_up']:
             self.last_dpad_key_code = action_type
@@ -181,7 +197,7 @@ class FireTVEnvironment(environment.Environment):
                 action_outcome = 'playback_completed'
                 self.trailer_playing = False
 
-        if self.session_steps > 300:
+        if self.session_steps > 60:
             done = True
             llm_decision['session_end_reason'] = 'timeout'
         
@@ -218,7 +234,9 @@ class FireTVEnvironment(environment.Environment):
             'current_focused_item_data': new_focused_item_data,
             'trailer_playing': self.trailer_playing,
             'trailer_start_time': self.trailer_start_time,
-            'current_screen_context': self.current_screen_context
+            'current_screen_context': self.current_screen_context,
+            # Pass click count for circuit breaker
+            'consecutive_click_count': self.consecutive_click_count 
         }
         
         return observation, 0, done, info
