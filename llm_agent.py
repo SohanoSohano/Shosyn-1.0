@@ -1,4 +1,3 @@
-# llm_agent.py
 import openai
 import json
 import time
@@ -8,28 +7,28 @@ class LLMAgent:
     An agent powered by a local LLM that makes decisions based on a 
     psychological profile and dynamic state.
     """
-    def __init__(self, user_id: str, persona: dict, llm_model: str = "mistral"):
-        # Point the OpenAI client to the local Ollama server
+    def __init__(self, user_id: str, persona: dict, llm_model: str = "llama3:8b"):
         try:
             self.client = openai.OpenAI(
                 base_url='http://localhost:11434/v1',
-                api_key='ollama'  # Required, but can be any string
+                api_key='ollama'
             )
-            # Ping the server to ensure it's running
             self.client.models.list()
         except openai.APIConnectionError:
             print("\n" + "="*50)
             print("FATAL ERROR: Could not connect to the Ollama server at http://localhost:11434.")
-            print("Please ensure Ollama is running and the 'mistral' model is pulled.")
-            print("You can run it with the command: ollama run mistral")
+            print(f"Please ensure Ollama is running and the '{llm_model}' model is pulled.")
+            print(f"You can run it with the command: ollama run {llm_model}")
             print("="*50 + "\n")
             raise
 
         self.user_id = user_id
         self.persona = persona
-        self.llm_model = llm_model
         
-        # Initialize the agent's dynamic psychological state
+        # LLM model to use (llama3:8b or mistral)
+        self.llm_model = llm_model 
+        
+        # Initialize the agent's dynamic psychological state (used internally for decisions)
         self.state = {
             "frustration_level": 0.0,
             "cognitive_load": 0.1,
@@ -42,31 +41,46 @@ class LLMAgent:
         item_desc = f"- ID: {focused_item['item_id']}, Title: {focused_item['title']}, Genres: {focused_item['genres']}"
 
         prompt = f"""
-        You are a user simulator. Your task is to role-play and decide your next single action based on your detailed persona and current psychological state.
+        You are a user simulator. Your role is to make decisions for a user interacting with a TV content browsing app.
+        Your actions must be realistic and consistent with your given persona and current internal state.
 
         **Your Persona Profile:**
         - Narrative: {self.persona['narrative']}
-        - Personality (OCEAN Model): {self.persona['ocean']}
-        - Genre Preferences: {self.persona['preferences']}
+        - Personality (OCEAN Model, 0.0-1.0 scale, 1.0 is high): {self.persona['ocean']}
+        - Genre Preferences (0.0-1.0 scale, 1.0 is strong preference): {self.persona['preferences']}
 
-        **Your Current Psychological State:**
-        - Frustration Level: {self.state['frustration_level']:.2f} (0=calm, 1=very frustrated)
-        - Cognitive Load: {self.state['cognitive_load']:.2f} (0=bored, 1=overwhelmed)
+        **Your Current Internal State (influences your choices):**
+        - Frustration Level: {self.state['frustration_level']:.2f} (0=calm, 1=very frustrated. High frustration might lead to less exploration or quitting.)
+        - Cognitive Load: {self.state['cognitive_load']:.2f} (0=bored, 1=overwhelmed. High load might lead to simpler choices or pausing.)
 
-        **Current Situation:**
+        **Current Situation in the App:**
         - You are on the '{screen_context}' screen.
-        - The item in focus is: {item_desc}
-
-        **Your Task:**
-        Based on your persona and state, what is your next single action?
-        Choose ONE from: 'dpad_right', 'dpad_left', 'dpad_down', 'dpad_up', 'click', 'back', 'scroll', 'hover'.
-        - If 'click', you MUST specify a 'click_type' ('play', 'more_info', 'trailer').
-        - If 'scroll', you MUST specify 'scroll_depth' (a float from 0.1 to 1.0) and 'scroll_speed' (an integer from 100 to 2000).
-        - If 'hover', you MUST specify 'hover_duration' (a float from 0.5 to 10.0 seconds).
+        """
+        # MODIFICATION: Add specific context and rules for the Detail_Page
+        if screen_context == 'Detail_Page':
+            prompt += "- You can see the following interactive elements: Play Button, Trailer Button, Back Button. You should not click any button more than twice consecutively on this screen.\n"
         
-        You MUST reply in a valid JSON format with ONLY the action and its parameters.
+        prompt += f"- The item currently in focus (highlighted) is: {item_desc}\n"
+
+        prompt += """
+        **Your Task: Decide the next single action.**
+        Choose ONE action type from the list below. If the action requires parameters, you MUST include them.
+
+        **Allowed Action Types and Parameters:**
+        - 'dpad_right': Move focus right.
+        - 'dpad_left': Move focus left.
+        - 'dpad_down': Move focus down.
+        - 'dpad_up': Move focus up.
+        - 'click': Interact with the focused item.
+            - MUST include 'click_type': 'play', 'more_info', or 'trailer'.
+        - 'back': Go back to the previous screen or exit the app.
+        - 'hover': Briefly focus on an item.
+            - MUST include 'hover_duration': (float from 0.5 to 10.0 seconds). This reflects how long you briefly pause on it before moving on.
+
+        **Output Format:**
+        You MUST reply in a valid JSON object. Do not include any other text or reasoning outside the JSON.
         Example for dpad: {{ "action_type": "dpad_right" }}
-        Example for click: {{ "action_type": "click", "click_type": "play" }}
+        Example for click: {{ "action_type": "click", "click_type": "more_info" }}
         Example for hover: {{ "action_type": "hover", "hover_duration": 3.5 }}
         """
         return prompt
@@ -84,13 +98,19 @@ class LLMAgent:
                     response_format={"type": "json_object"}
                 )
                 decision = json.loads(response.choices[0].message.content)
+                
+                # Ensure LLM doesn't generate scroll_depth/speed as they are post-processed
+                if decision.get('action_type') == 'scroll':
+                    decision.pop('scroll_depth', None)
+                    decision.pop('scroll_speed', None)
+
                 return decision
             except (json.JSONDecodeError, openai.APIError) as e:
                 print(f"LLM Error: {e}. Retrying...")
                 time.sleep(1)
         
         # Fallback action if LLM fails repeatedly
-        return {"action_type": "dpad_right"}
+        return {"action_type": "dpad_right"} # Default safe action
 
     def update_state(self, action_outcome: str, event_details: dict):
         """Updates the agent's psychological state using our defined heuristics."""
@@ -98,13 +118,12 @@ class LLMAgent:
         # --- Frustration Calculation ---
         frustration_increase = 0
         if action_outcome == 'no_change' and event_details.get('sequence_context', {}).get('consecutive_action_count', 0) >= 2:
-            frustration_increase = 0.1 * event_details['sequence_context']['consecutive_action_count']
+            frustration_increase = 0.15 * event_details['sequence_context']['consecutive_action_count']
         elif event_details.get('action_type') == 'playback_abandon' and event_details.get('playback_position', 1.0) < 0.15:
             frustration_increase = 0.3
         
         if frustration_increase > 0:
-            # Apply Neuroticism multiplier from the agent's persona
-            frustration_increase *= (1 + self.persona['ocean']['neuroticism'])
+            frustration_increase *= (1 + self.persona['ocean']['neuroticism']) # Apply Neuroticism multiplier
             self.state['frustration_level'] = min(1.0, self.state['frustration_level'] + frustration_increase)
         
         # Frustration decays on successful, goal-oriented actions
@@ -114,10 +133,10 @@ class LLMAgent:
         # --- Cognitive Load Calculation ---
         load_increase = 0
         if event_details.get('sequence_context', {}).get('time_since_last_action', 0) > 4.0:
-            load_increase = 0.1 * (event_details['sequence_context']['time_since_last_action'] / 4.0)
+            load_increase = 0.05 * (event_details['sequence_context']['time_since_last_action'] / 4.0)
         elif event_details.get('action_type') == 'hover':
             load_increase = 0.05 * event_details.get('hover_duration', 0)
-        elif action_outcome == 'new_content_seen':
+        elif action_outcome == 'new_content_seen': # When user navigates to a new item
             load_increase = 0.1
         
         self.state['cognitive_load'] = min(1.0, self.state['cognitive_load'] + load_increase)
