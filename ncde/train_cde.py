@@ -21,16 +21,16 @@ sns.set_theme(style="whitegrid")
 
 # --- Configuration & Hyperparameters ---
 CONFIG = {
-    "data_path": r"C:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\Neo_Shosyn\Shosyn-1.0\dataset\enriched_simulation_logs_500.csv",
-    "batch_size": 32,
-    "learning_rate": 1e-4,  # MODIFICATION: Reduced learning rate for stability
+    "data_path": "/home/ubuntu/Shosyn-1.0/dataset/enriched_simulation_logs_500.csv",
+    "batch_size": 64,
+    "learning_rate": 5e-5,
     "weight_decay": 1e-5,
     "epochs": 50,
-    "hidden_channels": 32,
-    "cde_func_channels": 64,
+    "hidden_channels": 64,
+    "cde_func_channels": 128,
     "cde_func_depth": 3,
     "readout_hidden_channels": 64,
-    "num_workers": 0,
+    "num_workers": 4,
     "clip_value": 1.0
 }
 
@@ -74,7 +74,6 @@ class SessionDataset(Dataset):
 def collate_fn(batch):
     sequences, targets = zip(*batch)
     padded_sequences = nn.utils.rnn.pad_sequence(sequences, batch_first=True, padding_value=0.0)
-    # MODIFICATION: Removed unused 'lengths' tensor from return
     return padded_sequences, torch.stack(targets)
 
 
@@ -82,7 +81,6 @@ def collate_fn(batch):
 class CDEFunc(nn.Module):
     def __init__(self, input_channels, hidden_channels, depth):
         super(CDEFunc, self).__init__()
-        # MODIFICATION: Use Tanh for numerical stability in the vector field
         layers = [nn.Linear(hidden_channels, CONFIG["cde_func_channels"]), nn.Tanh()]
         for _ in range(depth - 1):
             layers.extend([nn.Linear(CONFIG["cde_func_channels"], CONFIG["cde_func_channels"]), nn.Tanh()])
@@ -180,6 +178,7 @@ def main():
     train_ids, val_ids = train_test_split(all_session_ids, test_size=0.2, random_state=42)
     
     train_df = df[df['session_id'].isin(train_ids)]
+    # MODIFICATION: Corrected the typo in the val_df assignment
     val_df = df[df['session_id'].isin(val_ids)]
 
     print(f"Training on {len(train_ids)} sessions, Validating on {len(val_ids)} sessions.")
