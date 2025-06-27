@@ -2,7 +2,7 @@
 import requests
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class RecommendationTester:
     """Comprehensive tester for the recommendation system."""

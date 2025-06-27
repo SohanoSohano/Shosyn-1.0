@@ -121,7 +121,7 @@ class MultiTargetInferenceEngine:
     def _load_config(self, config_path: Optional[str]) -> Dict:
         """Load configuration parameters."""
         default_config = {
-            "logsig_depth": 3,
+            "logsig_depth": 2,
             "min_events_for_prediction": 3,
             "frustration_threshold_high": 0.4,
             "frustration_threshold_low": 0.15,
@@ -148,7 +148,7 @@ class MultiTargetInferenceEngine:
             
             model = MultiTargetNeuralRDE(
                 input_channels=input_channels,
-                hidden_dims=[128, 64],  # Adjust based on your training config
+                hidden_dims=[128, 64, 32],  # Adjust based on your training config
                 output_channels=2  # Both frustration and cognitive load
             )
             

@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize multi-target inference engine
 inference_engine = MultiTargetInferenceEngine(
-    model_path="best_model_multitarget_rde.pth",
-    movie_catalog_path="tmdb_5000_movies.csv"
+    model_path=r"C:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\Neo_Shosyn\Shosyn-1.0\ncde\best_model_multitarget_rde.pth",
+    movie_catalog_path=r"C:\Users\solos\OneDrive\Documents\College\Projects\Advanced Behavioural Analysis for Content Recommendation\Shosyn\Neo_Shosyn\Shosyn-1.0\dataset\tmdb_5000_movies.csv"
 )
 
 # Background task for session cleanup

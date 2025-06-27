@@ -1,0 +1,80 @@
+[
+  {
+    "user_id": "user_stressed_professional_1",
+    "session_id": "session_test_001",
+    "action_type": "session_start",
+    "timestamp": "2025-06-27T20:47:14.194518",
+    "screen_context": "Home",
+    "focused_item": "{\"item_id\": \"home\", \"title\": \"Home Screen\", \"genres\": []}",
+    "sequence_context": "{\"time_since_last_action\": 0.0, \"consecutive_action_count\": 1}",
+    "frustration_level": 0.05,
+    "cognitive_load": 0.1
+  },
+  {
+    "user_id": "user_stressed_professional_1",
+    "session_id": "session_test_001",
+    "action_type": "dpad_right",
+    "timestamp": "2025-06-27T20:47:16.194518",
+    "screen_context": "Home",
+    "focused_item": "{\"item_id\": \"movie_123\", \"title\": \"Action Movie\", \"genres\": [\"Action\", \"Thriller\"]}",
+    "sequence_context": "{\"time_since_last_action\": 2.0, \"consecutive_action_count\": 1}",
+    "frustration_level": 0.08,
+    "cognitive_load": 0.15
+  },
+  {
+    "user_id": "user_stressed_professional_1",
+    "session_id": "session_test_001",
+    "action_type": "dpad_right",
+    "timestamp": "2025-06-27T20:47:17.194518",
+    "screen_context": "Home",
+    "focused_item": "{\"item_id\": \"movie_124\", \"title\": \"Horror Film\", \"genres\": [\"Horror\", \"Thriller\"]}",
+    "sequence_context": "{\"time_since_last_action\": 1.0, \"consecutive_action_count\": 2}",
+    "frustration_level": 0.12,
+    "cognitive_load": 0.18
+  },
+  {
+    "user_id": "user_stressed_professional_1",
+    "session_id": "session_test_001",
+    "action_type": "dpad_right",
+    "timestamp": "2025-06-27T20:47:18.194518",
+    "screen_context": "Home",
+    "focused_item": "{\"item_id\": \"movie_125\", \"title\": \"Another Action Movie\", \"genres\": [\"Action\", \"Adventure\"]}",
+    "sequence_context": "{\"time_since_last_action\": 1.0, \"consecutive_action_count\": 3}",
+    "frustration_level": 0.18,
+    "cognitive_load": 0.22
+  },
+  {
+    "user_id": "user_stressed_professional_1",
+    "session_id": "session_test_001",
+    "action_type": "back",
+    "timestamp": "2025-06-27T20:47:21.194518",
+    "screen_context": "Home",
+    "focused_item": "{\"item_id\": \"movie_123\", \"title\": \"Action Movie\", \"genres\": [\"Action\", \"Thriller\"]}",
+    "sequence_context": "{\"time_since_last_action\": 3.0, \"consecutive_action_count\": 1}",
+    "frustration_level": 0.25,
+    "cognitive_load": 0.28
+  },
+  {
+    "user_id": "user_stressed_professional_1",
+    "session_id": "session_test_001",
+    "action_type": "dpad_down",
+    "timestamp": "2025-06-27T20:47:23.194518",
+    "screen_context": "Home",
+    "focused_item": "{\"item_id\": \"movie_200\", \"title\": \"Comedy Special\", \"genres\": [\"Comedy\"]}",
+    "sequence_context": "{\"time_since_last_action\": 2.0, \"consecutive_action_count\": 1}",
+    "frustration_level": 0.22,
+    "cognitive_load": 0.25
+  },
+  {
+    "user_id": "user_stressed_professional_1",
+    "session_id": "session_test_001",
+    "action_type": "click",
+    "timestamp": "2025-06-27T20:47:26.194518",
+    "screen_context": "Detail_Page",
+    "focused_item": "{\"item_id\": \"movie_200\", \"title\": \"Comedy Special\", \"genres\": [\"Comedy\"]}",
+    "sequence_context": "{\"time_since_last_action\": 3.0, \"consecutive_action_count\": 1}",
+    "click_type": "more_info",
+    "frustration_level": 0.18,
+    "cognitive_load": 0.2
+  }
+]
