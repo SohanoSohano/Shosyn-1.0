@@ -11,7 +11,7 @@ from llm_agent import LLMAgent
 from firetv_environment import FireTVEnvironment
 
 # --- Simulation Configuration ---
-NUM_SESSIONS_TO_SIMULATE = 20 # Increased for more data generation
+NUM_SESSIONS_TO_SIMULATE = 500
 OUTPUT_FILE_PREFIX = "simulation_logs" 
 TMDB_DATA_PATH = "tmdb_5000_movies.csv"
 

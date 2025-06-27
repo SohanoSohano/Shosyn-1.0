@@ -197,7 +197,7 @@ class FireTVEnvironment(environment.Environment):
                 action_outcome = 'playback_completed'
                 self.trailer_playing = False
 
-        if self.session_steps > 60:
+        if self.session_steps > 300:
             done = True
             llm_decision['session_end_reason'] = 'timeout'
         
