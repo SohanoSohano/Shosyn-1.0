@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import signatory
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-import joblib
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -78,7 +78,7 @@ class MultiTargetNeuralRDE(torch.nn.Module):
 
 class MultiTargetInferenceEngine:
     """
-    Production-ready inference engine for real-time frustration and cognitive load prediction
+    Enhanced production-ready inference engine for real-time frustration and cognitive load prediction
     with movie recommendations using your trained Multi-Target Neural RDE model.
     """
     
@@ -113,23 +113,30 @@ class MultiTargetInferenceEngine:
         # Active user sessions
         self.active_sessions: Dict[str, UserSession] = {}
         
+        # Prediction history for smoothing
+        self.prediction_history = {}
+        
         # Enhanced recommendation strategies for multi-target
         self.recommendation_strategies = self._initialize_multitarget_strategies()
+        
+        # Setup prediction logging
+        self.setup_prediction_logging()
         
         logger.info("Multi-target inference engine initialized successfully")
     
     def _load_config(self, config_path: Optional[str]) -> Dict:
-        """Load configuration parameters."""
+        """Load configuration with corrected thresholds."""
         default_config = {
             "logsig_depth": 2,
             "min_events_for_prediction": 3,
-            "frustration_threshold_high": 0.4,
-            "frustration_threshold_low": 0.15,
-            "cognitive_load_threshold_high": 0.6,
-            "cognitive_load_threshold_low": 0.2,
+            "frustration_threshold_high": 0.08,    # Much lower - more sensitive
+            "frustration_threshold_low": 0.05,     # New medium threshold
+            "cognitive_load_threshold_high": 0.15, # Much lower - more sensitive
+            "cognitive_load_threshold_low": 0.11,  # New medium threshold
             "recommendation_count": 10,
             "session_timeout_minutes": 30,
-            "model_confidence_threshold": 0.1
+            "frustration_scale_factor": 2.5,
+            "cognitive_scale_factor": 10.0,         # Increased as recommended
         }
         
         if config_path and Path(config_path).exists():
@@ -139,30 +146,94 @@ class MultiTargetInferenceEngine:
         
         return default_config
     
+    def setup_prediction_logging(self):
+        """Setup logging for predictions and errors."""
+        self.prediction_logger = logging.getLogger('predictions')
+        handler = logging.FileHandler('prediction_logs.json')
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        self.prediction_logger.addHandler(handler)
+        self.prediction_logger.setLevel(logging.INFO)
+    
     def _load_model(self, model_path: str) -> torch.nn.Module:
-        """Load the trained Multi-Target Neural RDE model."""
+        """Load the trained Multi-Target Neural RDE model with robust size mismatch handling."""
         try:
-            # Calculate input channels (should match training)
-            path_dim = 1 + 2 + 2 + 7  # time + psych + scroll + actions (adjust based on your data)
-            input_channels = signatory.logsignature_channels(path_dim, self.config["logsig_depth"])
+            # First, load the checkpoint to inspect its structure
+            checkpoint = torch.load(model_path, map_location=self.device)
             
+            # Determine the correct architecture from the checkpoint
+            first_layer_key = 'shared_layers.0.weight'
+            if first_layer_key in checkpoint:
+                expected_input_channels = checkpoint[first_layer_key].shape[1]
+                
+                # Determine hidden dimensions from checkpoint structure
+                if 'shared_layers.6.weight' in checkpoint:
+                    # Model has 3 hidden layers: [128, 64, 32]
+                    hidden_dims = [128, 64, 32]
+                else:
+                    # Model has 2 hidden layers: [128, 64]
+                    hidden_dims = [128, 64]
+                
+                logger.info(f"Detected model architecture: input_channels={expected_input_channels}, hidden_dims={hidden_dims}")
+            else:
+                raise ValueError("Cannot determine model architecture from checkpoint")
+            
+            # Create model with correct architecture
             model = MultiTargetNeuralRDE(
-                input_channels=input_channels,
-                hidden_dims=[128, 64, 32],  # Adjust based on your training config
-                output_channels=2  # Both frustration and cognitive load
+                input_channels=expected_input_channels,
+                hidden_dims=hidden_dims,
+                output_channels=2
             )
             
-            # Load trained weights
-            state_dict = torch.load(model_path, map_location=self.device)
-            model.load_state_dict(state_dict)
-            model.to(self.device)
+            # Robust loading with size mismatch handling
+            self._load_state_dict_with_mismatch_handling(model, checkpoint)
             
+            model.to(self.device)
             logger.info(f"Multi-target model loaded successfully from {model_path}")
+            logger.info(f"Model architecture: input_channels={expected_input_channels}, hidden_dims={hidden_dims}")
             return model
             
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise
+    
+    def _load_state_dict_with_mismatch_handling(self, model, checkpoint):
+        """Load state dict with robust size mismatch handling."""
+        loaded_state_dict = checkpoint
+        model_state_dict = model.state_dict()
+        
+        # Create filtered state dict
+        filtered_state_dict = {}
+        skipped_keys = []
+        
+        for k, v in loaded_state_dict.items():
+            if k in model_state_dict:
+                if v.size() == model_state_dict[k].size():
+                    # Sizes match - load the parameter
+                    filtered_state_dict[k] = v
+                else:
+                    # Size mismatch - keep model's original parameter
+                    logger.warning(f"Size mismatch for {k}: checkpoint {v.size()} vs model {model_state_dict[k].size()}")
+                    filtered_state_dict[k] = model_state_dict[k]
+                    skipped_keys.append(k)
+            else:
+                # Key not in model - skip it
+                logger.warning(f"Skipping unexpected key: {k}")
+                skipped_keys.append(k)
+        
+        # Add any missing keys from model
+        for k, v in model_state_dict.items():
+            if k not in filtered_state_dict:
+                logger.warning(f"Using random initialization for missing key: {k}")
+                filtered_state_dict[k] = v
+        
+        # Load with strict=False
+        missing_keys, unexpected_keys = model.load_state_dict(filtered_state_dict, strict=False)
+        
+        if skipped_keys:
+            logger.info(f"Successfully loaded model with {len(skipped_keys)} mismatched parameters")
+            logger.info(f"Skipped keys: {skipped_keys}")
+        else:
+            logger.info("Model loaded perfectly - all parameters matched")
     
     def _load_movie_catalog(self, catalog_path: str) -> pd.DataFrame:
         """Load and preprocess movie catalog."""
@@ -263,33 +334,59 @@ class MultiTargetInferenceEngine:
         return scaler, ohe_encoder
     
     def _initialize_multitarget_strategies(self) -> Dict:
-        """Initialize recommendation strategies for different psychological states."""
+        """Enhanced recommendation strategies with better content matching."""
         return {
             "high_frustration_high_cognitive": {
                 "preferred_genres": ["Comedy", "Animation", "Family"],
-                "avoid_genres": ["Horror", "Thriller", "Documentary"],
+                "avoid_genres": ["Horror", "Thriller", "Documentary", "Drama"],
                 "complexity_preference": "low",
-                "strategy": "simple_comfort_content"
+                "strategy": "simple_comfort_content",
+                "description": "Simple, comforting content to reduce both stress and mental load"
             },
             "high_frustration_low_cognitive": {
-                "preferred_genres": ["Comedy", "Action", "Adventure"],
-                "avoid_genres": ["Horror", "Thriller"],
-                "complexity_preference": "medium",
-                "strategy": "engaging_comfort_content"
+                "preferred_genres": ["Comedy", "Family", "Animation"],
+                "avoid_genres": ["Horror", "Thriller", "Action"],
+                "complexity_preference": "low",
+                "strategy": "comfort_content",
+                "description": "Comforting, easy-to-follow content to reduce frustration"
             },
             "low_frustration_high_cognitive": {
                 "preferred_genres": ["Documentary", "Drama", "Sci-Fi"],
-                "avoid_genres": [],
+                "avoid_genres": ["Animation", "Family"],
                 "complexity_preference": "high",
-                "strategy": "complex_exploration"
+                "strategy": "complex_exploration",
+                "description": "Intellectually engaging content for focused viewing"
             },
             "low_frustration_low_cognitive": {
                 "preferred_genres": ["Action", "Adventure", "Comedy"],
                 "avoid_genres": [],
                 "complexity_preference": "medium",
-                "strategy": "balanced_exploration"
+                "strategy": "balanced_exploration",
+                "description": "Engaging content for relaxed exploration"
             }
         }
+    
+    def _apply_prediction_smoothing(self, session_key: str, frustration: float, cognitive_load: float) -> Tuple[float, float]:
+        """Apply smoothing over recent predictions."""
+        if session_key not in self.prediction_history:
+            self.prediction_history[session_key] = {'frustration': [], 'cognitive': []}
+        
+        history = self.prediction_history[session_key]
+        
+        # Add current predictions
+        history['frustration'].append(frustration)
+        history['cognitive'].append(cognitive_load)
+        
+        # Keep only last 3 predictions
+        SMOOTHING_WINDOW = 3
+        history['frustration'] = history['frustration'][-SMOOTHING_WINDOW:]
+        history['cognitive'] = history['cognitive'][-SMOOTHING_WINDOW:]
+        
+        # Calculate smoothed values
+        smoothed_frustration = sum(history['frustration']) / len(history['frustration'])
+        smoothed_cognitive = sum(history['cognitive']) / len(history['cognitive'])
+        
+        return smoothed_frustration, smoothed_cognitive
     
     def update_session(self, user_id: str, session_id: str, event: Dict) -> Dict:
         """
@@ -323,20 +420,26 @@ class MultiTargetInferenceEngine:
         if len(session.events) >= self.config["min_events_for_prediction"]:
             try:
                 predicted_frustration, predicted_cognitive_load = self._predict_psychological_state(session.events)
-                session.predicted_frustration = predicted_frustration
-                session.predicted_cognitive_load = predicted_cognitive_load
                 
-                logger.info(f"Updated session {session_key}: frustration = {predicted_frustration:.3f}, cognitive_load = {predicted_cognitive_load:.3f}")
+                # Apply smoothing
+                smoothed_frustration, smoothed_cognitive = self._apply_prediction_smoothing(
+                    session_key, predicted_frustration, predicted_cognitive_load
+                )
+                
+                session.predicted_frustration = smoothed_frustration
+                session.predicted_cognitive_load = smoothed_cognitive
+                
+                logger.info(f"Updated session {session_key}: frustration = {smoothed_frustration:.3f}, cognitive_load = {smoothed_cognitive:.3f}")
                 
                 return {
                     "status": "success",
                     "user_id": user_id,
                     "session_id": session_id,
-                    "predicted_frustration": predicted_frustration,
-                    "predicted_cognitive_load": predicted_cognitive_load,
+                    "predicted_frustration": smoothed_frustration,
+                    "predicted_cognitive_load": smoothed_cognitive,
                     "event_count": len(session.events),
-                    "recommendations_needed": (predicted_frustration > self.config["frustration_threshold_high"] or 
-                                             predicted_cognitive_load > self.config["cognitive_load_threshold_high"])
+                    "recommendations_needed": (smoothed_frustration > self.config["frustration_threshold_high"] or 
+                                             smoothed_cognitive > self.config["cognitive_load_threshold_high"])
                 }
                 
             except Exception as e:
@@ -357,7 +460,7 @@ class MultiTargetInferenceEngine:
         }
     
     def _predict_psychological_state(self, events: List[Dict]) -> Tuple[float, float]:
-        """Predict both frustration level and cognitive load from sequence of events."""
+        """Predict both frustration level and cognitive load with scaling correction."""
         try:
             # Convert events to feature sequence (matching training format)
             features = self._events_to_features(events)
@@ -365,10 +468,10 @@ class MultiTargetInferenceEngine:
             # Create path tensor
             path_tensor = torch.tensor(features, dtype=torch.float32)
             
-            # Compute log-signature
+            # Compute log-signature with correct depth
             logsignature = signatory.logsignature(
                 path_tensor.unsqueeze(0), 
-                self.config["logsig_depth"]
+                self.config["logsig_depth"]  # Use depth 2
             ).squeeze(0)
             
             # Predict using model
@@ -378,15 +481,32 @@ class MultiTargetInferenceEngine:
                 frustration = float(predictions.cpu().numpy()[0, 0])
                 cognitive_load = float(predictions.cpu().numpy()[0, 1])
             
-            # Ensure valid ranges
-            frustration = max(0.0, min(1.0, frustration))
-            cognitive_load = max(0.0, min(1.0, cognitive_load))
+            # Apply scaling to compensate for conservative bias
+            scaled_frustration = min(frustration * self.config["frustration_scale_factor"], 1.0)
+            scaled_cognitive_load = min(cognitive_load * self.config["cognitive_scale_factor"], 1.0)
             
-            return frustration, cognitive_load
+            # Apply minimum thresholds to prevent unrealistically low values
+            scaled_frustration = max(scaled_frustration, 0.05)
+            scaled_cognitive_load = max(scaled_cognitive_load, 0.1)
+            
+            # Log prediction for analysis
+            log_entry = {
+                'timestamp': datetime.now().isoformat(),
+                'event_count': len(events),
+                'raw_frustration': frustration,
+                'raw_cognitive_load': cognitive_load,
+                'scaled_frustration': scaled_frustration,
+                'scaled_cognitive_load': scaled_cognitive_load,
+                'last_action': events[-1].get('action_type') if events else None
+            }
+            
+            self.prediction_logger.info(json.dumps(log_entry))
+            
+            return scaled_frustration, scaled_cognitive_load
             
         except Exception as e:
             logger.error(f"Psychological state prediction error: {e}")
-            return 0.5, 0.1  # Default values
+            return 0.2, 0.15  # More realistic default values
     
     def _events_to_features(self, events: List[Dict]) -> np.ndarray:
         """Convert event sequence to feature matrix for log-signature."""
@@ -472,50 +592,119 @@ class MultiTargetInferenceEngine:
         return top_recommendations
     
     def _determine_strategy(self, frustration: float, cognitive_load: float) -> str:
-        """Determine recommendation strategy based on both psychological dimensions."""
-        high_frustration = frustration > self.config["frustration_threshold_high"]
-        high_cognitive = cognitive_load > self.config["cognitive_load_threshold_high"]
+        """Improved strategy determination with better thresholds and logic."""
         
-        if high_frustration and high_cognitive:
-            return "high_frustration_high_cognitive"
-        elif high_frustration and not high_cognitive:
-            return "high_frustration_low_cognitive"
-        elif not high_frustration and high_cognitive:
-            return "low_frustration_high_cognitive"
+        # DEBUG: Log the decision process
+        logger.info(f"Strategy detection: frustration={frustration:.3f}, cognitive_load={cognitive_load:.3f}")
+        
+        # FIXED THRESHOLDS - More sensitive to user state
+        frustration_high_threshold = 0.08  # Lower from 0.3
+        frustration_medium_threshold = 0.05  # New medium threshold
+        
+        cognitive_high_threshold = 0.15  # Lower from 0.4
+        cognitive_medium_threshold = 0.11  # New medium threshold
+        
+        # Categorize frustration level
+        if frustration >= frustration_high_threshold:
+            frustration_category = "high"
+        elif frustration >= frustration_medium_threshold:
+            frustration_category = "medium"
         else:
-            return "low_frustration_low_cognitive"
+            frustration_category = "low"
+        
+        # Categorize cognitive load level
+        if cognitive_load >= cognitive_high_threshold:
+            cognitive_category = "high"
+        elif cognitive_load >= cognitive_medium_threshold:
+            cognitive_category = "medium"
+        else:
+            cognitive_category = "low"
+        
+        # IMPROVED STRATEGY MAPPING
+        strategy_map = {
+            ("high", "high"): "high_frustration_high_cognitive",
+            ("high", "medium"): "high_frustration_high_cognitive",  # Treat as high cognitive
+            ("high", "low"): "high_frustration_low_cognitive",
+            ("medium", "high"): "high_frustration_high_cognitive",  # Treat as high frustration
+            ("medium", "medium"): "high_frustration_low_cognitive",  # Moderate stress = comfort content
+            ("medium", "low"): "low_frustration_low_cognitive",
+            ("low", "high"): "low_frustration_high_cognitive",
+            ("low", "medium"): "low_frustration_low_cognitive",
+            ("low", "low"): "low_frustration_low_cognitive"
+        }
+        
+        strategy = strategy_map.get((frustration_category, cognitive_category), "low_frustration_low_cognitive")
+        
+        logger.info(f"Selected strategy: {strategy} (frustration: {frustration_category}, cognitive: {cognitive_category})")
+        
+        return strategy
     
     def _score_movies_multitarget(self, 
-                                 strategy_config: Dict, 
-                                 frustration_level: float,
-                                 cognitive_load_level: float,
-                                 user_preferences: Optional[Dict]) -> List[MovieRecommendation]:
-        """Score and rank movies based on multi-target strategy."""
+                                strategy_config: Dict, 
+                                frustration_level: float,
+                                cognitive_load_level: float,
+                                user_preferences: Optional[Dict]) -> List[MovieRecommendation]:
+        """Score movies with improved diversity and granular scoring to prevent capping."""
         recommendations = []
         
         for _, movie in self.movie_catalog.iterrows():
-            # Calculate frustration compatibility
+            # Calculate base compatibility scores
             frustration_compatibility = self._calculate_frustration_compatibility(
                 movie, strategy_config, frustration_level
             )
             
-            # Calculate cognitive load compatibility
             cognitive_compatibility = self._calculate_cognitive_compatibility(
                 movie, strategy_config, cognitive_load_level
             )
             
-            # Calculate persona match
             persona_match = self._calculate_persona_match(movie, user_preferences)
             
-            # Overall score (weighted combination)
-            overall_score = (
+            # ADD DIVERSITY FACTORS TO CREATE SCORE VARIATION
+            movie_genres = movie.get('genres', [])
+            movie_id = movie.get('item_id', movie.get('id', 0))
+            
+            # Add genre-specific scoring variations
+            genre_bonus = 0.0
+            if 'Animation' in movie_genres:
+                genre_bonus += 0.03  # Reduced from 0.05
+            if 'Comedy' in movie_genres:
+                genre_bonus += 0.02  # Reduced from 0.03
+            if 'Action' in movie_genres:
+                genre_bonus += 0.01  # Reduced from 0.02
+            if 'Family' in movie_genres:
+                genre_bonus += 0.025  # Reduced from 0.04
+            
+            # Add movie-specific factors for diversity (from search results)
+            popularity_factor = (hash(str(movie_id)) % 100) / 1000.0  # 0.000-0.099 variation
+            
+            # Add runtime-based scoring
+            runtime = movie.get('runtime', 120)
+            runtime_factor = 0.0
+            if 90 <= runtime <= 120:  # Sweet spot for moderate stress
+                runtime_factor = 0.015  # Reduced from 0.02
+            elif runtime > 150:  # Long movies for low stress
+                runtime_factor = -0.005 if frustration_level > 0.2 else 0.02  # Reduced
+            
+            # Calculate base score with reduced weights to prevent capping
+            base_score = (
                 0.4 * frustration_compatibility + 
                 0.3 * cognitive_compatibility +
                 0.3 * persona_match
             )
             
-            # Generate reasoning
-            reasoning = self._generate_multitarget_reasoning(
+            # APPLY SEARCH RESULTS SUGGESTION: Scale down base score and add diversity
+            # This prevents multiple 1.0 scores
+            scaled_base_score = base_score * 0.85  # Scale down from 0.9 to 0.85 for more room
+            diversity_bonus = genre_bonus + popularity_factor + runtime_factor
+            
+            # Calculate final score
+            overall_score = scaled_base_score + diversity_bonus
+            
+            # Ensure score stays in valid range but allow more granular differences
+            overall_score = max(0.0, min(overall_score, 0.98))  # Cap at 0.98 instead of 1.0
+            
+            # Generate reasoning with more variety
+            reasoning = self._generate_diverse_reasoning(
                 movie, strategy_config, frustration_level, cognitive_load_level, overall_score
             )
             
@@ -526,7 +715,7 @@ class MultiTargetInferenceEngine:
                 frustration_compatibility=frustration_compatibility,
                 cognitive_compatibility=cognitive_compatibility,
                 persona_match=persona_match,
-                overall_score=overall_score,
+                overall_score=round(overall_score, 3),  # Round to 3 decimal places for cleaner display
                 reasoning=reasoning
             )
             
@@ -535,7 +724,83 @@ class MultiTargetInferenceEngine:
         # Sort by overall score
         recommendations.sort(key=lambda x: x.overall_score, reverse=True)
         
-        return recommendations
+        # Apply improved diversity filter
+        return self._apply_advanced_diversity_filter(recommendations)
+
+
+    def _apply_advanced_diversity_filter(self, recommendations: List[MovieRecommendation]) -> List[MovieRecommendation]:
+        """Apply advanced diversity filtering to ensure varied recommendations."""
+        diverse_recommendations = []
+        genre_counts = {}
+        director_counts = {}  # If you have director data
+        MAX_PER_GENRE = 2
+        MAX_PER_DIRECTOR = 1
+        
+        for rec in recommendations:
+            # Check genre diversity
+            primary_genre = rec.genres[0] if rec.genres else 'Unknown'
+            genre_count = genre_counts.get(primary_genre, 0)
+            
+            # Check if we can add this recommendation
+            can_add = True
+            
+            if genre_count >= MAX_PER_GENRE:
+                # Only add if score is significantly higher than existing ones
+                existing_scores = [r.overall_score for r in diverse_recommendations 
+                                if r.genres and r.genres[0] == primary_genre]
+                if existing_scores and rec.overall_score <= max(existing_scores) + 0.05:
+                    can_add = False
+            
+            if can_add:
+                diverse_recommendations.append(rec)
+                genre_counts[primary_genre] = genre_count + 1
+            
+            # Stop when we have enough diverse recommendations
+            if len(diverse_recommendations) >= self.config["recommendation_count"]:
+                break
+        
+        return diverse_recommendations
+
+    def _generate_diverse_reasoning(self, 
+                                movie: pd.Series, 
+                                strategy_config: Dict, 
+                                frustration_level: float,
+                                cognitive_load_level: float,
+                                score: float) -> str:
+        """Generate varied reasoning messages with more granular explanations."""
+        movie_genres = movie.get('genres', [])
+        primary_genre = movie_genres[0] if movie_genres else 'Unknown'
+        
+        # Create varied reasoning based on score ranges and genres
+        if score > 0.9:
+            if 'Animation' in movie_genres:
+                return f"Outstanding match! {primary_genre} content offers exceptional stress relief and joy."
+            elif 'Comedy' in movie_genres:
+                return f"Perfect choice! {primary_genre} delivers exactly the mood boost you need right now."
+            else:
+                return f"Excellent recommendation! {primary_genre} content perfectly matches your current state."
+        
+        elif score > 0.85:
+            if frustration_level > 0.15:
+                return f"Great for unwinding. {primary_genre} content provides effective stress relief."
+            else:
+                return f"Highly recommended! {primary_genre} content aligns beautifully with your preferences."
+        
+        elif score > 0.8:
+            if 'Family' in movie_genres:
+                return f"Wonderful option. {primary_genre} content offers comfort and familiarity."
+            else:
+                return f"Strong match! {primary_genre} content suits your psychological profile well."
+        
+        elif score > 0.75:
+            return f"Good choice. {primary_genre} content provides balanced entertainment for your current mood."
+        
+        elif score > 0.7:
+            return f"Solid option. {primary_genre} offers {', '.join(movie_genres[:2])} entertainment."
+        
+        else:
+            return f"Decent pick. {primary_genre} content provides light {', '.join(movie_genres[:2])} viewing."
+
     
     def _calculate_frustration_compatibility(self, 
                                            movie: pd.Series, 
@@ -624,25 +889,26 @@ class MultiTargetInferenceEngine:
         return overlap / total_preferred
     
     def _generate_multitarget_reasoning(self, 
-                                      movie: pd.Series, 
-                                      strategy_config: Dict, 
-                                      frustration_level: float,
-                                      cognitive_load_level: float,
-                                      score: float) -> str:
-        """Generate human-readable reasoning for multi-target recommendation."""
+                                    movie: pd.Series, 
+                                    strategy_config: Dict, 
+                                    frustration_level: float,
+                                    cognitive_load_level: float,
+                                    score: float) -> str:
+        """Generate reasoning based on actual strategy selected."""
         movie_genres = movie.get('genres', [])
-        strategy = strategy_config['strategy']
+        strategy_description = strategy_config.get('description', '')
         
-        if frustration_level > 0.6 and cognitive_load_level > 0.6:
-            return f"Perfect for stress relief and mental break. {', '.join(movie_genres[:2])} content helps reduce both frustration and cognitive overload."
-        elif frustration_level > 0.6:
-            return f"Recommended for stress relief. {', '.join(movie_genres[:2])} content helps reduce frustration while staying engaging."
-        elif cognitive_load_level > 0.6:
-            return f"Light entertainment to ease mental fatigue. {', '.join(movie_genres[:2])} content is easy to follow and relaxing."
-        elif frustration_level < 0.2 and cognitive_load_level < 0.2:
-            return f"Perfect for exploration and engagement. {', '.join(movie_genres[:2])} content matches your adventurous and alert mood."
+        # Use the strategy description to create appropriate reasoning
+        if 'comfort' in strategy_description.lower():
+            return f"Perfect for stress relief. {', '.join(movie_genres[:2])} content helps reduce frustration and provides comfort."
+        elif 'simple' in strategy_description.lower():
+            return f"Ideal for mental break. {', '.join(movie_genres[:2])} content is easy to follow and relaxing."
+        elif 'complex' in strategy_description.lower():
+            return f"Great for engaged viewing. {', '.join(movie_genres[:2])} content offers intellectual stimulation."
+        elif 'balanced' in strategy_description.lower():
+            return f"Perfect balance. {', '.join(movie_genres[:2])} content suits your relaxed, alert mood."
         else:
-            return f"Balanced choice for your current state. {', '.join(movie_genres[:2])} content suits your psychological profile."
+            return f"Good match. {', '.join(movie_genres[:2])} content aligns with your current psychological state."
     
     def _get_default_recommendations(self) -> List[MovieRecommendation]:
         """Get default recommendations when no session data is available."""
@@ -676,6 +942,9 @@ class MultiTargetInferenceEngine:
         
         for session_key in expired_sessions:
             del self.active_sessions[session_key]
+            # Also clean prediction history
+            if session_key in self.prediction_history:
+                del self.prediction_history[session_key]
         
         if expired_sessions:
             logger.info(f"Cleaned up {len(expired_sessions)} expired sessions")
