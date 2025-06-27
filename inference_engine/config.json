@@ -1,0 +1,14 @@
+{
+    "logsig_depth": 3,
+    "min_events_for_prediction": 3,
+    "frustration_threshold_high": 0.4,
+    "frustration_threshold_low": 0.15,
+    "recommendation_count": 10,
+    "session_timeout_minutes": 30,
+    "model_confidence_threshold": 0.1,
+    "api_settings": {
+        "host": "0.0.0.0",
+        "port": 5000,
+        "debug": false
+    }
+}
