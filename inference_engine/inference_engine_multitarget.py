@@ -4,16 +4,21 @@ import numpy as np
 import json
 import logging
 import time
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Union, TYPE_CHECKING
 from dataclasses import dataclass
 from pathlib import Path
 import signatory
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from datetime import datetime
 
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+from enhanced_psychological_tracker import EnhancedPsychologicalTracker, PsychologicalState
+
 
 @dataclass
 class UserSession:
@@ -97,6 +102,9 @@ class MultiTargetInferenceEngine:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Initializing multi-target inference engine on {self.device}")
         
+        self.calibration_enabled = True
+        self.prediction_errors = {}  # Track prediction errors for calibration
+
         # Load configuration
         self.config = self._load_config(config_path)
         
@@ -121,22 +129,67 @@ class MultiTargetInferenceEngine:
         
         # Setup prediction logging
         self.setup_prediction_logging()
+
+        # Initialize enhanced psychological tracker
+        self.psychological_tracker = EnhancedPsychologicalTracker()
+        
+        # Enhanced recommendation strategies with temporal awareness
+        self.enhanced_strategies = self._initialize_enhanced_strategies()
         
         logger.info("Multi-target inference engine initialized successfully")
     
+    def _calibrate_predictions(self, session_key: str, frustration: float, cognitive_load: float) -> Tuple[float, float]:
+        """Calibrate predictions based on historical accuracy using post-hoc methods."""
+        
+        if not self.calibration_enabled or session_key not in self.prediction_errors:
+            return frustration, cognitive_load
+        
+        errors = self.prediction_errors[session_key]
+        
+        if len(errors['frustration']) >= 3:  # Need minimum samples for calibration
+            # Simple linear calibration (Platt Scaling approach)
+            avg_frustration_error = np.mean(errors['frustration'])
+            avg_cognitive_error = np.mean(errors['cognitive'])
+            
+            # Apply calibration correction
+            calibrated_frustration = min(frustration + avg_frustration_error * 0.3, 1.0)
+            calibrated_cognitive = min(cognitive_load + avg_cognitive_error * 0.3, 1.0)
+            
+            return max(calibrated_frustration, 0.05), max(calibrated_cognitive, 0.1)
+        
+        return frustration, cognitive_load
+
+    def _update_prediction_errors(self, session_key: str, predicted_f: float, predicted_c: float, 
+                                 actual_f: float, actual_c: float):
+        """Track prediction errors for calibration."""
+        if session_key not in self.prediction_errors:
+            self.prediction_errors[session_key] = {'frustration': [], 'cognitive': []}
+        
+        # Store recent errors (keep last 10)
+        self.prediction_errors[session_key]['frustration'].append(actual_f - predicted_f)
+        self.prediction_errors[session_key]['cognitive'].append(actual_c - predicted_c)
+        
+        # Keep only recent errors
+        if len(self.prediction_errors[session_key]['frustration']) > 10:
+            self.prediction_errors[session_key]['frustration'] = self.prediction_errors[session_key]['frustration'][-10:]
+            self.prediction_errors[session_key]['cognitive'] = self.prediction_errors[session_key]['cognitive'][-10:]
+
     def _load_config(self, config_path: Optional[str]) -> Dict:
         """Load configuration with corrected thresholds."""
         default_config = {
             "logsig_depth": 2,
             "min_events_for_prediction": 3,
-            "frustration_threshold_high": 0.08,    # Much lower - more sensitive
-            "frustration_threshold_low": 0.05,     # New medium threshold
-            "cognitive_load_threshold_high": 0.15, # Much lower - more sensitive
-            "cognitive_load_threshold_low": 0.11,  # New medium threshold
+            "frustration_threshold_high": 0.06,    # Lowered for earlier detection
+            "frustration_threshold_low": 0.03,     # Lowered for sensitivity
+            "cognitive_load_threshold_high": 0.12, # Lowered for earlier detection
+            "cognitive_load_threshold_low": 0.08,  # Lowered for sensitivity
             "recommendation_count": 10,
             "session_timeout_minutes": 30,
-            "frustration_scale_factor": 2.5,
-            "cognitive_scale_factor": 10.0,         # Increased as recommended
+            "frustration_scale_factor": 6.0,       # INCREASED from 4.0
+            "cognitive_scale_factor": 20.0,        # INCREASED from 15.0
+            "calibration_enabled": True,
+            "calibration_weight": 0.4,             # INCREASED from 0.3
+            "pattern_aware_scaling": True,         # NEW: Enable pattern-based scaling
         }
         
         if config_path and Path(config_path).exists():
@@ -334,8 +387,84 @@ class MultiTargetInferenceEngine:
         return scaler, ohe_encoder
     
     def _initialize_multitarget_strategies(self) -> Dict:
-        """Enhanced recommendation strategies with better content matching."""
+        """Initialize recommendation strategies for different psychological states."""
         return {
+            "high_frustration_high_cognitive": {
+                "preferred_genres": ["Comedy", "Animation", "Family"],
+                "avoid_genres": ["Horror", "Thriller", "Documentary", "Drama"],
+                "complexity_preference": "low",
+                "strategy": "simple_comfort_content",
+                "description": "Simple, comforting content to reduce both stress and mental load"
+            },
+            "high_frustration_low_cognitive": {
+                "preferred_genres": ["Comedy", "Family", "Animation"],
+                "avoid_genres": ["Horror", "Thriller", "Action"],
+                "complexity_preference": "low",
+                "strategy": "comfort_content",
+                "description": "Comforting, easy-to-follow content to reduce frustration"
+            },
+            "low_frustration_high_cognitive": {
+                "preferred_genres": ["Documentary", "Drama", "Sci-Fi"],
+                "avoid_genres": ["Animation", "Family"],
+                "complexity_preference": "high",
+                "strategy": "complex_exploration",
+                "description": "Intellectually engaging content for focused viewing"
+            },
+            "low_frustration_low_cognitive": {
+                "preferred_genres": ["Action", "Adventure", "Comedy"],
+                "avoid_genres": [],
+                "complexity_preference": "medium",
+                "strategy": "balanced_exploration",
+                "description": "Engaging content for relaxed exploration"
+            },
+            "recovery_comfort_content": {
+                "preferred_genres": ["Comedy", "Animation", "Family", "Feel-good"],
+                "avoid_genres": ["Horror", "Thriller", "Drama", "Documentary"],
+                "complexity_preference": "very_low",
+                "strategy": "gentle_recovery",
+                "description": "Gentle, healing content for stress recovery"
+            },
+            "intervention_content": {
+                "preferred_genres": ["Comedy", "Animation", "Family"],
+                "avoid_genres": ["Horror", "Thriller", "Action", "Drama"],
+                "complexity_preference": "very_low",
+                "strategy": "immediate_relief",
+                "description": "Immediate stress relief content"
+            },
+            "energy_boost_content": {
+                "preferred_genres": ["Comedy", "Adventure", "Animation"],
+                "avoid_genres": ["Horror", "Thriller"],
+                "complexity_preference": "low",
+                "strategy": "gentle_engagement",
+                "description": "Engaging but not overwhelming content"
+            }
+        }
+
+
+    def _initialize_enhanced_strategies(self) -> Dict:
+        """Initialize enhanced strategies with temporal awareness."""
+        return {
+            "recovery_comfort_content": {
+                "preferred_genres": ["Comedy", "Animation", "Family", "Feel-good"],
+                "avoid_genres": ["Horror", "Thriller", "Drama", "Documentary"],
+                "complexity_preference": "very_low",
+                "strategy": "gentle_recovery",
+                "description": "Gentle, healing content for stress recovery"
+            },
+            "intervention_content": {
+                "preferred_genres": ["Comedy", "Animation", "Family"],
+                "avoid_genres": ["Horror", "Thriller", "Action", "Drama"],
+                "complexity_preference": "very_low",
+                "strategy": "immediate_relief",
+                "description": "Immediate stress relief content"
+            },
+            "energy_boost_content": {
+                "preferred_genres": ["Comedy", "Adventure", "Animation"],
+                "avoid_genres": ["Horror", "Thriller"],
+                "complexity_preference": "low",
+                "strategy": "gentle_engagement",
+                "description": "Engaging but not overwhelming content"
+            },
             "high_frustration_high_cognitive": {
                 "preferred_genres": ["Comedy", "Animation", "Family"],
                 "avoid_genres": ["Horror", "Thriller", "Documentary", "Drama"],
@@ -366,6 +495,52 @@ class MultiTargetInferenceEngine:
             }
         }
     
+    def _apply_enhanced_smoothing(self, session_key: str, enhanced_state: PsychologicalState) -> tuple:
+        """Apply smoothing with temporal awareness."""
+        # Use existing smoothing but weight recent trends more heavily
+        base_smoothed = self._apply_prediction_smoothing(
+            session_key, enhanced_state.current_frustration, enhanced_state.current_cognitive
+        )
+        
+        # Adjust based on trends
+        frustration_adjustment = 0.0
+        cognitive_adjustment = 0.0
+        
+        if enhanced_state.frustration_trend == 'increasing':
+            frustration_adjustment = 0.02  # Slight boost to reflect increasing trend
+        elif enhanced_state.frustration_trend == 'decreasing':
+            frustration_adjustment = -0.02  # Slight reduction for decreasing trend
+        
+        if enhanced_state.cognitive_trend == 'increasing':
+            cognitive_adjustment = 0.02
+        elif enhanced_state.cognitive_trend == 'decreasing':
+            cognitive_adjustment = -0.02
+        
+        adjusted_frustration = max(0.0, min(1.0, base_smoothed[0] + frustration_adjustment))
+        adjusted_cognitive = max(0.0, min(1.0, base_smoothed[1] + cognitive_adjustment))
+        
+        return adjusted_frustration, adjusted_cognitive
+    
+    def _enhanced_recommendation_trigger(self, enhanced_state: PsychologicalState) -> bool:
+        """Enhanced logic for when to trigger recommendations."""
+        # Immediate intervention needed
+        if enhanced_state.stress_recovery_phase:
+            return True
+        
+        # Increasing stress trends
+        if (enhanced_state.frustration_trend == 'increasing' and 
+            enhanced_state.current_frustration > 0.08):
+            return True
+        
+        # High cognitive load with increasing trend
+        if (enhanced_state.cognitive_trend == 'increasing' and 
+            enhanced_state.current_cognitive > 0.15):
+            return True
+        
+        # Fall back to existing logic
+        return (enhanced_state.current_frustration > self.config["frustration_threshold_high"] or 
+                enhanced_state.current_cognitive > self.config["cognitive_load_threshold_high"])    
+
     def _apply_prediction_smoothing(self, session_key: str, frustration: float, cognitive_load: float) -> Tuple[float, float]:
         """Apply smoothing over recent predictions."""
         if session_key not in self.prediction_history:
@@ -390,7 +565,7 @@ class MultiTargetInferenceEngine:
     
     def update_session(self, user_id: str, session_id: str, event: Dict) -> Dict:
         """
-        Update user session with new event and predict both frustration and cognitive load.
+        Enhanced session update with temporal psychological tracking and calibration.
         
         Args:
             user_id: Unique user identifier
@@ -404,6 +579,7 @@ class MultiTargetInferenceEngine:
         
         # Get or create session
         session_key = f"{user_id}_{session_id}"
+        self._current_session_key = session_key  # Store for calibration
         if session_key not in self.active_sessions:
             self.active_sessions[session_key] = UserSession(
                 user_id=user_id,
@@ -419,48 +595,78 @@ class MultiTargetInferenceEngine:
         # Predict both targets if we have enough events
         if len(session.events) >= self.config["min_events_for_prediction"]:
             try:
+                # Get basic predictions
                 predicted_frustration, predicted_cognitive_load = self._predict_psychological_state(session.events)
                 
-                # Apply smoothing
-                smoothed_frustration, smoothed_cognitive = self._apply_prediction_smoothing(
-                    session_key, predicted_frustration, predicted_cognitive_load
+                # Get temporal psychological state
+                enhanced_state = self.psychological_tracker.update_psychological_state(
+                    session_key, predicted_frustration, predicted_cognitive_load, current_time
                 )
                 
-                session.predicted_frustration = smoothed_frustration
-                session.predicted_cognitive_load = smoothed_cognitive
+                # Apply smoothing with temporal awareness
+                smoothed_frustration, smoothed_cognitive = self._apply_enhanced_smoothing(
+                    session_key, enhanced_state
+                )
                 
-                logger.info(f"Updated session {session_key}: frustration = {smoothed_frustration:.3f}, cognitive_load = {smoothed_cognitive:.3f}")
+                # ENHANCED: Apply calibration after smoothing
+                calibrated_frustration, calibrated_cognitive = self._enhanced_calibrate_predictions(
+                    session_key, smoothed_frustration, smoothed_cognitive, session.events
+                )
+                
+                # ENHANCED: Track prediction errors for calibration if actual values available
+                if 'frustration_level' in event and 'cognitive_load' in event:
+                    self._update_prediction_errors(
+                        session_key,
+                        calibrated_frustration, calibrated_cognitive,
+                        event['frustration_level'], event['cognitive_load']
+                    )
+                
+                session.predicted_frustration = calibrated_frustration
+                session.predicted_cognitive_load = calibrated_cognitive
+                session.enhanced_psychological_state = enhanced_state
+                
+                logger.info(f"Enhanced session update {session_key}: "
+                        f"frustration={calibrated_frustration:.3f} (trend: {enhanced_state.frustration_trend}), "
+                        f"cognitive={calibrated_cognitive:.3f} (trend: {enhanced_state.cognitive_trend}), "
+                        f"recovery_phase={enhanced_state.stress_recovery_phase}")
                 
                 return {
                     "status": "success",
                     "user_id": user_id,
                     "session_id": session_id,
-                    "predicted_frustration": smoothed_frustration,
-                    "predicted_cognitive_load": smoothed_cognitive,
-                    "event_count": len(session.events),
-                    "recommendations_needed": (smoothed_frustration > self.config["frustration_threshold_high"] or 
-                                             smoothed_cognitive > self.config["cognitive_load_threshold_high"])
+                    "predicted_frustration": float(calibrated_frustration),
+                    "predicted_cognitive_load": float(calibrated_cognitive),
+                    "psychological_trends": {
+                        "frustration_trend": str(enhanced_state.frustration_trend),
+                        "cognitive_trend": str(enhanced_state.cognitive_trend),
+                        "recovery_phase": bool(enhanced_state.stress_recovery_phase),  # FIXED: Convert to Python bool
+                        "session_duration": float(enhanced_state.session_duration)
+                    },
+                    "event_count": int(len(session.events)),
+                    "recommendations_needed": bool(self._enhanced_recommendation_trigger(enhanced_state)),  # FIXED
+                    "calibration_applied": bool(hasattr(self, 'prediction_errors') and session_key in getattr(self, 'prediction_errors', {}))  # FIXED
                 }
                 
             except Exception as e:
-                logger.error(f"Prediction failed for {session_key}: {e}")
+                logger.error(f"Enhanced prediction failed for {session_key}: {e}")
                 return {
                     "status": "error",
                     "message": str(e),
                     "user_id": user_id,
-                    "session_id": session_id
+                    "session_id": session_id,
+                    "event_count": len(session.events)
                 }
         
         return {
             "status": "insufficient_data",
             "user_id": user_id,
             "session_id": session_id,
-            "event_count": len(session.events),
-            "min_required": self.config["min_events_for_prediction"]
+            "event_count": len(session.events)
         }
+
     
     def _predict_psychological_state(self, events: List[Dict]) -> Tuple[float, float]:
-        """Predict both frustration level and cognitive load with scaling correction."""
+        """Predict both frustration level and cognitive load with dynamic scaling based on recent behavior."""
         try:
             # Convert events to feature sequence (matching training format)
             features = self._events_to_features(events)
@@ -481,15 +687,55 @@ class MultiTargetInferenceEngine:
                 frustration = float(predictions.cpu().numpy()[0, 0])
                 cognitive_load = float(predictions.cpu().numpy()[0, 1])
             
-            # Apply scaling to compensate for conservative bias
-            scaled_frustration = min(frustration * self.config["frustration_scale_factor"], 1.0)
-            scaled_cognitive_load = min(cognitive_load * self.config["cognitive_scale_factor"], 1.0)
+            # Get base scaling factors
+            base_frustration_scale = self.config["frustration_scale_factor"]
+            base_cognitive_scale = self.config["cognitive_scale_factor"]
+            
+            # Previously ENHANCED: Dynamic scaling based on recent behavior
+            # ENHANCED: Context-aware scaling
+            recent_actions = [e.get('action_type', '') for e in events[-5:]]  # Increased window
+            back_action_count = recent_actions.count('back')
+            click_action_count = recent_actions.count('click')
+            
+            # Behavioral pattern analysis
+            stress_indicators = back_action_count
+            engagement_indicators = click_action_count
+            
+            # Dynamic scaling based on behavioral context
+            if stress_indicators >= 3:  # High stress pattern
+                frustration_boost = 2.5  # Increased from 1.5
+                cognitive_boost = 2.0    # Increased from 1.3
+            elif stress_indicators >= 2:
+                frustration_boost = 2.0  # Increased from 1.2
+                cognitive_boost = 1.7    # Increased from 1.1
+            elif stress_indicators >= 1:
+                frustration_boost = 1.5
+                cognitive_boost = 1.3
+            else:
+                # Low stress - reduce over-prediction for relaxed users
+                frustration_boost = 0.8  # NEW: Scale down for relaxed users
+                cognitive_boost = 0.9
+            
+            # Apply dynamic scaling
+            dynamic_frustration_scale = base_frustration_scale * frustration_boost
+            dynamic_cognitive_scale = base_cognitive_scale * cognitive_boost
+            
+            # Scale predictions with dynamic factors
+            scaled_frustration = min(frustration * dynamic_frustration_scale, 1.0)
+            scaled_cognitive_load = min(cognitive_load * dynamic_cognitive_scale, 1.0)
+            
+            # APPLY CALIBRATION HERE
+            session_key = getattr(self, '_current_session_key', None)
+            if session_key:
+                scaled_frustration, scaled_cognitive_load = self._calibrate_predictions(
+                    session_key, scaled_frustration, scaled_cognitive_load
+                )
             
             # Apply minimum thresholds to prevent unrealistically low values
             scaled_frustration = max(scaled_frustration, 0.05)
             scaled_cognitive_load = max(scaled_cognitive_load, 0.1)
             
-            # Log prediction for analysis
+            # ENHANCED: Log prediction with dynamic scaling details
             log_entry = {
                 'timestamp': datetime.now().isoformat(),
                 'event_count': len(events),
@@ -497,19 +743,31 @@ class MultiTargetInferenceEngine:
                 'raw_cognitive_load': cognitive_load,
                 'scaled_frustration': scaled_frustration,
                 'scaled_cognitive_load': scaled_cognitive_load,
+                'frustration_boost': frustration_boost,
+                'cognitive_boost': cognitive_boost,
+                'back_actions': back_action_count,
+                'base_frustration_scale': base_frustration_scale,
+                'base_cognitive_scale': base_cognitive_scale,
+                'dynamic_frustration_scale': dynamic_frustration_scale,
+                'dynamic_cognitive_scale': dynamic_cognitive_scale,
                 'last_action': events[-1].get('action_type') if events else None
             }
             
             self.prediction_logger.info(json.dumps(log_entry))
             
+            scaled_frustration, scaled_cognitive_load = self._apply_adaptive_bounds(
+                scaled_frustration, scaled_cognitive_load, events
+            )
+
             return scaled_frustration, scaled_cognitive_load
             
         except Exception as e:
             logger.error(f"Psychological state prediction error: {e}")
-            return 0.2, 0.15  # More realistic default values
+            return 0.3, 0.2  # Higher default values for better intervention
+
     
     def _events_to_features(self, events: List[Dict]) -> np.ndarray:
-        """Convert event sequence to feature matrix for log-signature."""
+        """Revert to original feature extraction to match model dimensions."""
         features = []
         
         for i, event in enumerate(events):
@@ -519,7 +777,7 @@ class MultiTargetInferenceEngine:
             else:
                 time_delta = 1.0  # Simplified - implement proper time calculation
             
-            # Psychological features
+            # Psychological features (ORIGINAL - no weighting)
             frustration = event.get('frustration_level', 0.1)
             cognitive_load = event.get('cognitive_load', 0.1)
             
@@ -534,7 +792,7 @@ class MultiTargetInferenceEngine:
             action_type = event.get('action_type', 'click')
             action_encoded = self.ohe_encoder.transform([[action_type]])[0]
             
-            # Combine all features
+            # Combine all features (ORIGINAL FORMAT)
             feature_row = np.concatenate([
                 [time_delta],
                 psych_scaled,
@@ -545,51 +803,59 @@ class MultiTargetInferenceEngine:
             features.append(feature_row)
         
         return np.array(features)
+
     
-    def get_recommendations(self, 
-                          user_id: str, 
-                          session_id: str,
-                          user_preferences: Optional[Dict] = None) -> List[MovieRecommendation]:
-        """
-        Get movie recommendations based on current user frustration and cognitive load.
+    def get_recommendations(self, user_id: str, session_id: str, 
+                        user_preferences: Optional[Dict] = None) -> List[MovieRecommendation]:
+        """Enhanced recommendations with temporal psychological awareness."""
         
-        Args:
-            user_id: User identifier
-            session_id: Session identifier
-            user_preferences: Optional user preference data
-            
-        Returns:
-            List of movie recommendations ranked by suitability
-        """
         session_key = f"{user_id}_{session_id}"
         
         if session_key not in self.active_sessions:
-            logger.warning(f"No active session found for {session_key}")
             return self._get_default_recommendations()
         
         session = self.active_sessions[session_key]
+        
+        # FIXED: Initialize variables at the start
+        enhanced_state = None
         frustration_level = session.predicted_frustration
         cognitive_load_level = session.predicted_cognitive_load
         
-        # Determine recommendation strategy based on both dimensions
-        strategy = self._determine_strategy(frustration_level, cognitive_load_level)
-        strategy_config = self.recommendation_strategies[strategy]
+        # Use enhanced psychological state if available
+        if hasattr(session, 'enhanced_psychological_state') and session.enhanced_psychological_state:
+            enhanced_state = session.enhanced_psychological_state
+            strategy = self._determine_enhanced_strategy(enhanced_state)
+            strategy_config = self.enhanced_strategies.get(
+                strategy, 
+                self.recommendation_strategies.get('low_frustration_low_cognitive', {})
+            )
+            # Update with enhanced state values
+            frustration_level = enhanced_state.current_frustration
+            cognitive_load_level = enhanced_state.current_cognitive
+            
+            logger.info(f"Using enhanced strategy '{strategy}' for session {session_key}")
+        else:
+            # Fall back to basic strategy
+            strategy = self._determine_strategy(frustration_level, cognitive_load_level)
+            strategy_config = self.recommendation_strategies.get(strategy, {})
+            logger.info(f"Using basic strategy '{strategy}' for session {session_key}")
         
-        # Score movies based on multi-target strategy
-        recommendations = self._score_movies_multitarget(
-            strategy_config, 
-            frustration_level,
-            cognitive_load_level,
-            user_preferences
-        )
-        
-        # Return top N recommendations
-        top_recommendations = recommendations[:self.config["recommendation_count"]]
-        
-        logger.info(f"Generated {len(top_recommendations)} recommendations for {session_key} "
-                   f"(frustration: {frustration_level:.3f}, cognitive_load: {cognitive_load_level:.3f}, strategy: {strategy})")
-        
-        return top_recommendations
+        # Generate recommendations
+        try:
+            recommendations = self._score_movies_multitarget(
+                strategy_config, 
+                frustration_level,
+                cognitive_load_level,
+                user_preferences,
+                enhanced_state
+            )
+            
+            return recommendations[:self.config["recommendation_count"]]
+            
+        except Exception as e:
+            logger.error(f"Recommendation generation failed for {session_key}: {e}")
+            return self._get_default_recommendations()
+
     
     def _determine_strategy(self, frustration: float, cognitive_load: float) -> str:
         """Improved strategy determination with better thresholds and logic."""
@@ -643,8 +909,9 @@ class MultiTargetInferenceEngine:
                                 strategy_config: Dict, 
                                 frustration_level: float,
                                 cognitive_load_level: float,
-                                user_preferences: Optional[Dict]) -> List[MovieRecommendation]:
-        """Score movies with improved diversity and granular scoring to prevent capping."""
+                                user_preferences: Optional[Dict],
+                                enhanced_state: Optional[PsychologicalState] = None) -> List[MovieRecommendation]:
+        """Enhanced movie scoring with temporal awareness."""
         recommendations = []
         
         for _, movie in self.movie_catalog.iterrows():
@@ -703,10 +970,15 @@ class MultiTargetInferenceEngine:
             # Ensure score stays in valid range but allow more granular differences
             overall_score = max(0.0, min(overall_score, 0.98))  # Cap at 0.98 instead of 1.0
             
-            # Generate reasoning with more variety
-            reasoning = self._generate_diverse_reasoning(
-                movie, strategy_config, frustration_level, cognitive_load_level, overall_score
-            )
+            # Generate enhanced reasoning
+            if enhanced_state:
+                reasoning = self._generate_enhanced_reasoning(
+                    movie, enhanced_state, strategy_config, overall_score
+                )
+            else:
+                reasoning = self._generate_diverse_reasoning(
+                    movie, strategy_config, 0.1, 0.1, overall_score
+                )
             
             recommendation = MovieRecommendation(
                 item_id=str(movie.get('item_id', movie.get('id', ''))),
@@ -715,7 +987,7 @@ class MultiTargetInferenceEngine:
                 frustration_compatibility=frustration_compatibility,
                 cognitive_compatibility=cognitive_compatibility,
                 persona_match=persona_match,
-                overall_score=round(overall_score, 3),  # Round to 3 decimal places for cleaner display
+                overall_score=round(overall_score, 3),
                 reasoning=reasoning
             )
             
@@ -965,3 +1237,179 @@ class MultiTargetInferenceEngine:
             "avg_frustration": np.mean([s.predicted_frustration for s in self.active_sessions.values()]),
             "avg_cognitive_load": np.mean([s.predicted_cognitive_load for s in self.active_sessions.values()])
         }
+
+    def _determine_enhanced_strategy(self, enhanced_state: PsychologicalState) -> str:
+        """Enhanced strategy selection with temporal awareness."""
+        
+        # Priority 1: Recovery phase - gentle healing content
+        if enhanced_state.stress_recovery_phase:
+            logger.info("Selected recovery strategy: user is in stress recovery phase")
+            return "recovery_comfort_content"
+        
+        # Priority 2: Increasing frustration - immediate intervention
+        if (enhanced_state.frustration_trend == 'increasing' and 
+            enhanced_state.current_frustration > 0.08):
+            logger.info("Selected intervention strategy: frustration is increasing")
+            return "intervention_content"
+        
+        # Priority 3: Decreasing cognitive capacity - energy boost
+        if (enhanced_state.cognitive_trend == 'increasing' and 
+            enhanced_state.current_cognitive > 0.15):
+            logger.info("Selected energy boost strategy: cognitive load increasing")
+            return "energy_boost_content"
+        
+        # Priority 4: Long session with stable high stress
+        if (enhanced_state.session_duration > 300 and  # 5 minutes
+            enhanced_state.current_frustration > 0.12):
+            logger.info("Selected sustained comfort strategy: long session with stress")
+            return "recovery_comfort_content"
+        
+        # Fall back to existing strategy logic
+        return self._determine_strategy(
+            enhanced_state.current_frustration,
+            enhanced_state.current_cognitive
+        )
+
+    def _generate_enhanced_reasoning(self, movie: pd.Series, enhanced_state: PsychologicalState, 
+                                strategy_config: Dict, overall_score: float) -> str:
+        """Generate contextual, meaningful reasoning with temporal awareness."""
+        
+        movie_genres = movie.get('genres', [])
+        primary_genre = movie_genres[0] if movie_genres else 'Unknown'
+        strategy = strategy_config.get('strategy', 'unknown')
+        
+        # Recovery phase reasoning
+        if enhanced_state.stress_recovery_phase:
+            if overall_score > 0.9:
+                return f"Perfect for your recovery journey. {movie.get('title', 'This content')} provides gentle " \
+                    f"{primary_genre} to help you continue healing from stress."
+            else:
+                return f"Good for recovery. {primary_genre} content offers comfort as you unwind."
+        
+        # Increasing frustration trend reasoning
+        if enhanced_state.frustration_trend == 'increasing':
+            if 'Comedy' in movie_genres or 'Animation' in movie_genres:
+                return f"Immediate stress relief! {movie.get('title', 'This')} offers comforting " \
+                    f"{primary_genre} to help break the frustration cycle before it builds further."
+            else:
+                return f"Stress intervention. {primary_genre} content designed to halt increasing frustration."
+        
+        # Cognitive overload reasoning
+        if enhanced_state.cognitive_trend == 'increasing':
+            complexity_score = movie.get('complexity_score', 0.5)
+            if complexity_score < 0.3:
+                return f"Mental break time! {movie.get('title', 'This content')} provides easy " \
+                    f"{primary_genre} viewing to give your mind a rest."
+            else:
+                return f"Light engagement. {primary_genre} content that won't add to your mental load."
+        
+        # Long session reasoning
+        if enhanced_state.session_duration > 600:  # 10 minutes
+            return f"Perfect for extended viewing. {movie.get('title', 'This')} offers " \
+                f"sustained {primary_genre} entertainment for your longer session."
+        
+        # Trend-aware reasoning based on score
+        if overall_score > 0.95:
+            if enhanced_state.frustration_trend == 'decreasing':
+                return f"Excellent choice as you're feeling better! {movie.get('title', 'This')} " \
+                    f"provides uplifting {primary_genre} to maintain your improving mood."
+            else:
+                return f"Outstanding match! {movie.get('title', 'This')} offers exceptional " \
+                    f"{primary_genre} perfectly suited to your current state."
+        
+        elif overall_score > 0.9:
+            return f"Great match for your current mood. {movie.get('title', 'This')} provides " \
+                f"excellent {primary_genre} that aligns with your psychological state."
+        
+        elif overall_score > 0.85:
+            return f"Good choice for right now. {primary_genre} content that fits your " \
+                f"current emotional and mental state well."
+        
+        else:
+            return f"Solid option. {primary_genre} content that provides appropriate " \
+                f"entertainment for your current psychological profile."
+
+    def _enhanced_recommendation_trigger(self, enhanced_state: PsychologicalState) -> bool:
+        """Enhanced logic for when to trigger recommendations."""
+        # Immediate intervention needed
+        if enhanced_state.stress_recovery_phase:
+            return True
+        
+        # Increasing stress trends
+        if (enhanced_state.frustration_trend == 'increasing' and 
+            enhanced_state.current_frustration > 0.08):
+            return True
+        
+        # High cognitive load with increasing trend
+        if (enhanced_state.cognitive_trend == 'increasing' and 
+            enhanced_state.current_cognitive > 0.15):
+            return True
+        
+        # Fall back to existing logic
+        return (enhanced_state.current_frustration > self.config.get("frustration_threshold_high", 0.08) or 
+                enhanced_state.current_cognitive > self.config.get("cognitive_load_threshold_high", 0.15))
+
+    def _enhanced_calibrate_predictions(self, session_key: str, frustration: float, 
+                                    cognitive_load: float, events: List[Dict]) -> Tuple[float, float]:
+        """Enhanced calibration with pattern-aware adjustments."""
+        
+        # Base calibration
+        calibrated_f, calibrated_c = self._calibrate_predictions(session_key, frustration, cognitive_load)
+        
+        # Pattern-based adjustments
+        if len(events) >= 3:
+            recent_actual_f = [e.get('frustration_level', 0) for e in events[-3:]]
+            recent_actual_c = [e.get('cognitive_load', 0) for e in events[-3:]]
+            
+            # Trend-aware calibration
+            if len(recent_actual_f) >= 2:
+                actual_f_trend = recent_actual_f[-1] - recent_actual_f[0]
+                actual_c_trend = recent_actual_c[-1] - recent_actual_c[0]
+                
+                # If actual values are trending up, boost predictions
+                if actual_f_trend > 0.1:
+                    calibrated_f = min(calibrated_f * 1.3, 1.0)
+                if actual_c_trend > 0.1:
+                    calibrated_c = min(calibrated_c * 1.3, 1.0)
+                
+                # If actual values are trending down, reduce predictions
+                if actual_f_trend < -0.1:
+                    calibrated_f = max(calibrated_f * 0.8, 0.05)
+                if actual_c_trend < -0.1:
+                    calibrated_c = max(calibrated_c * 0.8, 0.1)
+        
+        return calibrated_f, calibrated_c
+
+    def _apply_adaptive_bounds(self, frustration: float, cognitive_load: float, 
+                            events: List[Dict]) -> Tuple[float, float]:
+        """Apply adaptive bounds based on user behavior context."""
+        
+        # Analyze recent behavior for context
+        if len(events) >= 3:
+            recent_actions = [e.get('action_type', '') for e in events[-3:]]
+            back_actions = recent_actions.count('back')
+            
+            # High stress context - allow higher predictions
+            if back_actions >= 2:
+                max_frustration = 0.9
+                max_cognitive = 0.85
+                min_frustration = 0.2
+                min_cognitive = 0.15
+            # Normal context
+            else:
+                max_frustration = 0.7
+                max_cognitive = 0.6
+                min_frustration = 0.05
+                min_cognitive = 0.1
+        else:
+            # Default bounds
+            max_frustration = 0.8
+            max_cognitive = 0.7
+            min_frustration = 0.05
+            min_cognitive = 0.1
+        
+        # Apply adaptive bounds
+        bounded_frustration = max(min_frustration, min(frustration, max_frustration))
+        bounded_cognitive = max(min_cognitive, min(cognitive_load, max_cognitive))
+        
+        return bounded_frustration, bounded_cognitive

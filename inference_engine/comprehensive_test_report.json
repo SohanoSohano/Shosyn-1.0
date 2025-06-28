@@ -1,0 +1,310 @@
+{
+  "total_tests": 18,
+  "passed_tests": 10,
+  "success_rate": 0.5555555555555556,
+  "total_time": 355.3993401527405,
+  "avg_response_time": 2.064473488372093,
+  "test_results": [
+    {
+      "name": "API Health",
+      "passed": true,
+      "execution_time": 4.131592035293579,
+      "details": {
+        "health_status": true,
+        "stats_status": true
+      }
+    },
+    {
+      "name": "Stress Pattern: frustrated_browser",
+      "passed": true,
+      "execution_time": 16.616430521011353,
+      "details": {
+        "stress_detected": true,
+        "trend_changes": true,
+        "predictions": [
+          {
+            "event": 2,
+            "predicted_frustration": 0.21124910116195683,
+            "predicted_cognitive": 0.45544367730617524,
+            "actual_frustration": 0.2,
+            "actual_cognitive": 0.25
+          },
+          {
+            "event": 3,
+            "predicted_frustration": 0.3938946847096086,
+            "predicted_cognitive": 0.6437218386530876,
+            "actual_frustration": 0.35,
+            "actual_cognitive": 0.4
+          },
+          {
+            "event": 4,
+            "predicted_frustration": 0.5331452047675849,
+            "predicted_cognitive": 0.8061478924353918,
+            "actual_frustration": 0.5,
+            "actual_cognitive": 0.55
+          },
+          {
+            "event": 5,
+            "predicted_frustration": 0.8101799811270832,
+            "predicted_cognitive": 0.9309759235753615,
+            "actual_frustration": 0.65,
+            "actual_cognitive": 0.7
+          },
+          {
+            "event": 6,
+            "predicted_frustration": 0.6566420767858921,
+            "predicted_cognitive": 0.7761783637943467,
+            "actual_frustration": 0.45,
+            "actual_cognitive": 0.5
+          },
+          {
+            "event": 7,
+            "predicted_frustration": 0.5278849319921781,
+            "predicted_cognitive": 0.5362549348903222,
+            "actual_frustration": 0.25,
+            "actual_cognitive": 0.3
+          }
+        ],
+        "recovery_detected": true
+      }
+    },
+    {
+      "name": "Stress Pattern: overwhelmed_user",
+      "passed": true,
+      "execution_time": 16.53654193878174,
+      "details": {
+        "stress_detected": true,
+        "trend_changes": true,
+        "predictions": [
+          {
+            "event": 2,
+            "predicted_frustration": 0.21641413450241093,
+            "predicted_cognitive": 0.46454981714487076,
+            "actual_frustration": 0.25,
+            "actual_cognitive": 0.5
+          },
+          {
+            "event": 3,
+            "predicted_frustration": 0.2604650068879128,
+            "predicted_cognitive": 0.5224242922142148,
+            "actual_frustration": 0.4,
+            "actual_cognitive": 0.65
+          },
+          {
+            "event": 4,
+            "predicted_frustration": 0.38917936241626744,
+            "predicted_cognitive": 0.6169495281428099,
+            "actual_frustration": 0.6,
+            "actual_cognitive": 0.8
+          },
+          {
+            "event": 5,
+            "predicted_frustration": 0.677926212902069,
+            "predicted_cognitive": 0.8754228495526066,
+            "actual_frustration": 0.7,
+            "actual_cognitive": 0.85
+          },
+          {
+            "event": 6,
+            "predicted_frustration": 0.6243399577026367,
+            "predicted_cognitive": 0.6368244500454844,
+            "actual_frustration": 0.5,
+            "actual_cognitive": 0.6
+          },
+          {
+            "event": 7,
+            "predicted_frustration": 0.48618209133714485,
+            "predicted_cognitive": 0.5992090342879551,
+            "actual_frustration": 0.2,
+            "actual_cognitive": 0.25
+          }
+        ],
+        "recovery_detected": true
+      }
+    },
+    {
+      "name": "Recovery Pattern: gradual_recovery",
+      "passed": false,
+      "execution_time": 12.369760274887085,
+      "details": {
+        "recovery_detected": false,
+        "decreasing_trends": 0
+      }
+    },
+    {
+      "name": "Exploration Pattern: casual_browser",
+      "passed": false,
+      "execution_time": 12.442443609237671,
+      "details": {
+        "low_stress_maintained": false,
+        "stable_trends": 2,
+        "predictions": [
+          {
+            "event": 2,
+            "predicted_frustration": 0.1439970284700394,
+            "predicted_cognitive": 0.3176783546805382,
+            "actual_frustration": 0.04,
+            "actual_cognitive": 0.1
+          },
+          {
+            "event": 3,
+            "predicted_frustration": 0.18531798392534257,
+            "predicted_cognitive": 0.3752525658160448,
+            "actual_frustration": 0.02,
+            "actual_cognitive": 0.06
+          },
+          {
+            "event": 4,
+            "predicted_frustration": 0.15785818099975588,
+            "predicted_cognitive": 0.34210456162691116,
+            "actual_frustration": 0.03,
+            "actual_cognitive": 0.07
+          },
+          {
+            "event": 5,
+            "predicted_frustration": 0.0985226950645447,
+            "predicted_cognitive": 0.23876857998967166,
+            "actual_frustration": 0.01,
+            "actual_cognitive": 0.05
+          }
+        ],
+        "avg_frustration": 0.14642397211492064
+      }
+    },
+    {
+      "name": "Prediction Accuracy",
+      "passed": false,
+      "execution_time": 6.17939019203186,
+      "details": {
+        "accuracy": 0.0,
+        "accurate_predictions": 0,
+        "total_predictions": 1
+      }
+    },
+    {
+      "name": "Trend Detection",
+      "passed": true,
+      "execution_time": 8.251896142959595,
+      "details": {
+        "trends_detected": [
+          "stable",
+          "increasing"
+        ],
+        "increasing_detected": true
+      }
+    },
+    {
+      "name": "Recovery Detection",
+      "passed": false,
+      "execution_time": 8.240883588790894,
+      "details": {
+        "recovery_detected": false
+      }
+    },
+    {
+      "name": "Recommendation Quality",
+      "passed": true,
+      "execution_time": 18.079553365707397,
+      "details": {
+        "average_quality": 1.0,
+        "quality_scores": [
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "Recommendation Diversity",
+      "passed": true,
+      "execution_time": 8.71153974533081,
+      "details": {
+        "diversity_score": 0.7666666666666666,
+        "recommendations_count": 10
+      }
+    },
+    {
+      "name": "Recommendation Appropriateness",
+      "passed": true,
+      "execution_time": 8.672103643417358,
+      "details": {
+        "appropriateness_score": 1.0,
+        "comfort_content_ratio": 1.0
+      }
+    },
+    {
+      "name": "Concurrent Sessions",
+      "passed": false,
+      "execution_time": 6.537152290344238,
+      "details": {
+        "success_rate": 0.0,
+        "successful_sessions": 0,
+        "total_sessions": 10
+      }
+    },
+    {
+      "name": "Response Times",
+      "passed": false,
+      "execution_time": 0.0030629634857177734,
+      "details": {
+        "avg_response_time": 2.059546074074074,
+        "max_response_time": 2.114407,
+        "p95_response_time": 2.084813,
+        "performance_score": 0.0
+      }
+    },
+    {
+      "name": "Memory Usage",
+      "passed": true,
+      "execution_time": 45.36575150489807,
+      "details": {
+        "initial_sessions": 21,
+        "final_sessions": 41,
+        "sessions_created": 20,
+        "total_events": 101
+      }
+    },
+    {
+      "name": "Edge Cases",
+      "passed": true,
+      "execution_time": 6.181958913803101,
+      "details": {
+        "success_rate": 1.0,
+        "passed_cases": 3,
+        "total_cases": 3
+      }
+    },
+    {
+      "name": "Error Handling",
+      "passed": false,
+      "execution_time": 6.12638258934021,
+      "details": {
+        "error_handling_rate": 0.6666666666666666,
+        "tests_passed": 2,
+        "total_tests": 3
+      }
+    },
+    {
+      "name": "Continuous Activity",
+      "passed": false,
+      "execution_time": 61.65237474441528,
+      "details": {
+        "events_sent": 20,
+        "successful_predictions": 18,
+        "prediction_rate": 0.9,
+        "recommendations_generated": 4,
+        "duration": 60
+      }
+    },
+    {
+      "name": "Long Sessions",
+      "passed": true,
+      "execution_time": 109.28563213348389,
+      "details": {
+        "success_rate": 0.96,
+        "successful_events": 48,
+        "trend_changes": 23,
+        "total_events": 50
+      }
+    }
+  ]
+}
