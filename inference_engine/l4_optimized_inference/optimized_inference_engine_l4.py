@@ -83,27 +83,28 @@ class MultiTargetNeuralRDE(torch.nn.Module):
         output = torch.where(torch.isfinite(output), output, torch.zeros_like(output))
         return output
 
-class MultiTargetInferenceEngine:
-    """
-    Enhanced production-ready inference engine for real-time frustration and cognitive load prediction
-    with movie recommendations using your trained Multi-Target Neural RDE model.
-    """
-    
-
     def __init__(self, 
-                 model_path: str,
-                 movie_catalog_path: str,
-                 config_path: Optional[str] = None):
+                model_path: str,
+                movie_catalog_path: str,
+                config_path: Optional[str] = None,
+                batch_size: int = 32,        # NEW: L4 batch processing parameter
+                max_wait_ms: int = 10):      # NEW: L4 timing parameter
         """
-        Initialize the multi-target inference engine.
+        Initialize the multi-target inference engine with L4 optimization support.
         
         Args:
             model_path: Path to trained Multi-Target Neural RDE model (.pth file)
             movie_catalog_path: Path to TMDB movie catalog CSV
             config_path: Optional path to configuration file
+            batch_size: Batch size for L4 GPU optimization (default: 32)
+            max_wait_ms: Maximum wait time for batch processing in milliseconds (default: 10)
         """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Initializing multi-target inference engine on {self.device}")
+        
+        # NEW: Store L4 optimization parameters
+        self.batch_size = batch_size
+        self.max_wait_ms = max_wait_ms
         
         self._initialize_l4_optimizations()
 
@@ -157,7 +158,8 @@ class MultiTargetInferenceEngine:
         # Enhanced recommendation strategies with temporal awareness
         self.enhanced_strategies = self._initialize_enhanced_strategies()
         
-        logger.info("Multi-target inference engine initialized successfully")
+        logger.info("Multi-target inference engine initialized successfully with L4 optimization support")
+
     
     def _update_genre_affinity(self, session: UserSession, genres: List[str]):
         """Update the user's in-session genre affinity."""
